@@ -22,6 +22,7 @@ import {
   randomSettings,
   saveMacros,
   saveSettings,
+  togglePark,
   type DialId,
   type KaleidoSettings,
   type LensLayout,
@@ -31,16 +32,27 @@ import {
 } from "@/lib/kaleido/types";
 import { cn } from "@/lib/utils";
 
-function useWide() {
-  const [wide, setWide] = useState(false);
+function useChromeMode() {
+  const [flower, setFlower] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia("(min-width: 1024px)").matches &&
+      !window.matchMedia("(pointer: coarse)").matches
+    );
+  });
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 640px)");
-    const apply = () => setWide(mq.matches);
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const apply = () => setFlower(wide.matches && !coarse.matches);
     apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    wide.addEventListener("change", apply);
+    coarse.addEventListener("change", apply);
+    return () => {
+      wide.removeEventListener("change", apply);
+      coarse.removeEventListener("change", apply);
+    };
   }, []);
-  return wide;
+  return flower;
 }
 
 export function KaleidoApp() {
@@ -52,6 +64,7 @@ export function KaleidoApp() {
   const [tuneOpen, setTuneOpen] = useState(false);
   const [dialOpen, setDialOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [hiddenChrome, setHiddenChrome] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [clipState, setClipState] = useState<"idle" | "recording" | "saved" | "unsupported">("idle");
@@ -67,7 +80,7 @@ export function KaleidoApp() {
   const stageRef = useRef<KaleidoStageHandle>(null);
   const noticeTimer = useRef(0);
   const burstOnce = useRef(false);
-  const wide = useWide();
+  const flower = useChromeMode();
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -78,8 +91,8 @@ export function KaleidoApp() {
 
   const bottomInset = hiddenChrome
     ? 0
-    : Math.max(chromeH, tuneOpen ? 348 : dialOpen && !wide ? 228 : 76);
-  const rimPad = !hiddenChrome && dialOpen && !tuneOpen && wide ? 88 : 0;
+    : Math.max(chromeH, tuneOpen ? 280 : dialOpen && !flower ? 228 : 76);
+  const rimPad = !hiddenChrome && dialOpen && !tuneOpen && flower ? 64 : 0;
 
   useEffect(() => {
     if (!ready) return;
@@ -119,7 +132,7 @@ export function KaleidoApp() {
           const next = { ...macros, [slot]: lookFrom(prev) };
           writeMacros(next);
           setMacroSlot(slot);
-          flash(`Slot ${slot} programmed`);
+          flash(`Save ${slot}`);
           return prev;
         }
         setMacroSlot(slot);
@@ -134,6 +147,7 @@ export function KaleidoApp() {
     setDialOpen(false);
     setTuneOpen(false);
     setHelpOpen(false);
+    setMoreOpen(false);
   }, []);
 
   const onRandomize = useCallback(() => {
@@ -213,6 +227,10 @@ export function KaleidoApp() {
     setSettings((prev) => ({ ...prev, persist: cyclePersist(prev.persist) }));
   }, []);
 
+  const onTogglePark = useCallback(() => {
+    setSettings((prev) => ({ ...prev, persist: togglePark(prev.persist) }));
+  }, []);
+
   const onCycleLight = useCallback(() => {
     setSettings((prev) => ({
       ...prev,
@@ -233,6 +251,7 @@ export function KaleidoApp() {
     setHiddenChrome(false);
     setTuneOpen(false);
     setHelpOpen(false);
+    setMoreOpen(false);
     setDialOpen(true);
   }, []);
 
@@ -250,7 +269,7 @@ export function KaleidoApp() {
           onRandomize();
           break;
         case "trail":
-          onCyclePersist();
+          onTogglePark();
           break;
         case "pin":
           onTogglePin();
@@ -271,7 +290,7 @@ export function KaleidoApp() {
           break;
       }
     },
-    [closeMenus, cyclePath, onCycleColor, onCycleLight, onCyclePersist, onRandomize, onRecord, onTogglePin],
+    [closeMenus, cyclePath, onCycleColor, onCycleLight, onRandomize, onRecord, onTogglePark, onTogglePin],
   );
 
   useEffect(() => {
@@ -341,6 +360,7 @@ export function KaleidoApp() {
         setDialOpen(true);
         setTuneOpen(true);
         setHelpOpen(true);
+        setMoreOpen(true);
         return;
       }
       if (e.key === "t" || e.key === "T") {
@@ -394,7 +414,7 @@ export function KaleidoApp() {
         setSettings((prev) => ({ ...prev, persist: clamp(prev.persist - 8, 0, 100) }));
         return;
       }
-      if (dialOpen && !tuneOpen && (e.code.startsWith("Arrow"))) {
+      if (dialOpen && !tuneOpen && e.code.startsWith("Arrow")) {
         e.preventDefault();
         const idx = DIAL_IDS.indexOf(focusId);
         const n = DIAL_IDS.length;
@@ -452,6 +472,19 @@ export function KaleidoApp() {
     tuneOpen,
   ]);
 
+  const pathLabel =
+    settings.pathMode === "twin"
+      ? "Twin brush"
+      : settings.pathMode === "orbit"
+        ? "Orbit"
+        : settings.pathMode === "echo"
+          ? "Echo"
+          : settings.pathMode === "rosette"
+            ? "Rosette"
+            : settings.pathMode === "field"
+              ? "Field"
+              : null;
+
   const status =
     notice ??
     (clipState === "recording"
@@ -465,14 +498,12 @@ export function KaleidoApp() {
             : pinned
               ? "Pin parked"
               : macroSlot
-                ? `Slot ${macroSlot}`
-                : settings.pathMode !== "solo"
-                ? settings.pathMode === "twin"
-                  ? "Twin brush"
-                  : settings.pathMode === "orbit"
-                    ? "Orbit"
-                    : "Echo"
-                : null);
+                ? macros[macroSlot]
+                  ? `Slot ${macroSlot}`
+                  : `Save ${macroSlot}`
+                : pathLabel);
+
+  const showHeader = !hiddenChrome && !tuneOpen;
 
   return (
     <main className="relative h-screen h-dvh w-full select-none overflow-hidden bg-bg text-fg">
@@ -481,6 +512,7 @@ export function KaleidoApp() {
         settings={settings}
         bottomInset={bottomInset}
         rimPad={rimPad}
+        topInset={hiddenChrome ? 48 : 0}
         menuOpen={dialOpen || tuneOpen}
         onInteract={() => {
           setHint(false);
@@ -501,7 +533,7 @@ export function KaleidoApp() {
         onPinChange={setPinned}
       />
 
-      {!hiddenChrome ? (
+      {showHeader ? (
         <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6">
           <div>
             <h1 className="font-display text-3xl leading-tight tracking-[-0.03em] text-fg sm:text-4xl">
@@ -513,7 +545,7 @@ export function KaleidoApp() {
                 hint ? "opacity-100" : "opacity-0",
               )}
             >
-              <span className="sm:hidden">Tap the aperture. Two fingers paint. Trail sets how fast lines fade.</span>
+              <span className="sm:hidden">Tap the aperture. Two fingers paint. Decay sets how fast lines fade.</span>
               <span className="hidden sm:inline">
                 Paint · 2–9 folds · 1 and 0 macros · Space opens the dial
               </span>
@@ -525,6 +557,10 @@ export function KaleidoApp() {
             </span>
           ) : null}
         </header>
+      ) : status && !hiddenChrome ? (
+        <span className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]">
+          {status}
+        </span>
       ) : null}
 
       <KaleidoControls
@@ -537,10 +573,11 @@ export function KaleidoApp() {
         tuneOpen={tuneOpen}
         dialOpen={dialOpen}
         helpOpen={helpOpen}
+        moreOpen={moreOpen}
         recordEnabled={recordEnabled}
         pinned={pinned}
         hiddenChrome={hiddenChrome}
-        wide={wide}
+        flower={flower}
         lens={lens}
         focusId={focusId}
         macros={macros}
@@ -563,18 +600,20 @@ export function KaleidoApp() {
             if (open) {
               setTuneOpen(false);
               setHelpOpen(false);
+              setMoreOpen(false);
             }
             return !open;
           });
         }}
         onTogglePin={onTogglePin}
         onToggleHelp={() => setHelpOpen((open) => !open)}
+        onToggleMore={() => setMoreOpen((open) => !open)}
         onHideChrome={() => {
           closeMenus();
           setHiddenChrome((hidden) => !hidden);
         }}
         onCloseMenus={closeMenus}
-        onCyclePersist={onCyclePersist}
+        onTogglePark={onTogglePark}
         onCycleLight={onCycleLight}
         onRecallMacro={recallMacroSlot}
         onSaveMacro={(slot) => saveMacroSlot(slot, settings)}

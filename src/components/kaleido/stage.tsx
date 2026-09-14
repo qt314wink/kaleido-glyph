@@ -10,6 +10,7 @@ export type KaleidoStageHandle = {
   copyPng: () => Promise<boolean>;
   setBottomInset: (px: number) => void;
   setRimPad: (px: number) => void;
+  setTopInset: (px: number) => void;
   startClip: (handlers: ClipRecorderHandlers, seconds: RecordSeconds) => boolean;
   stopClip: () => void;
   recording: () => boolean;
@@ -22,6 +23,7 @@ type StageProps = {
   settings: KaleidoSettings;
   bottomInset: number;
   rimPad: number;
+  topInset: number;
   menuOpen: boolean;
   onInteract: () => void;
   onFreeze: () => void;
@@ -33,7 +35,7 @@ type StageProps = {
 
 export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
   function KaleidoStage(
-    { settings, bottomInset, rimPad, menuOpen, onInteract, onFreeze, onMiddleClick, onWheel, onLayout, onPinChange },
+    { settings, bottomInset, rimPad, topInset, menuOpen, onInteract, onFreeze, onMiddleClick, onWheel, onLayout, onPinChange },
     ref,
   ) {
     const rootRef = useRef<HTMLDivElement>(null);
@@ -47,6 +49,7 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
     const onPinRef = useRef(onPinChange);
     const insetRef = useRef(bottomInset);
     const rimRef = useRef(rimPad);
+    const topRef = useRef(topInset);
     const pressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
     const [failed, setFailed] = useState(false);
     settingsRef.current = settings;
@@ -56,6 +59,7 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
     onPinRef.current = onPinChange;
     insetRef.current = bottomInset;
     rimRef.current = rimPad;
+    topRef.current = topInset;
 
     useImperativeHandle(ref, () => ({
       clear: () => engineRef.current?.clear(),
@@ -64,6 +68,7 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
       copyPng: () => engineRef.current?.copyPng() ?? Promise.resolve(false),
       setBottomInset: (px: number) => engineRef.current?.setBottomInset(px),
       setRimPad: (px: number) => engineRef.current?.setRimPad(px),
+      setTopInset: (px: number) => engineRef.current?.setTopInset(px),
       startClip: (handlers, seconds) => {
         const canvas = engineRef.current?.canvas();
         if (!canvas || !canRecord()) return false;
@@ -102,6 +107,7 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
         engine.start();
         engine.setBottomInset(insetRef.current);
         engine.setRimPad(rimRef.current);
+        engine.setTopInset(topRef.current);
       } catch {
         setFailed(true);
         return;
@@ -120,7 +126,8 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
     useEffect(() => {
       engineRef.current?.setBottomInset(bottomInset);
       engineRef.current?.setRimPad(rimPad);
-    }, [bottomInset, rimPad]);
+      engineRef.current?.setTopInset(topInset);
+    }, [bottomInset, rimPad, topInset]);
 
     useEffect(() => {
       engineRef.current?.setMenuOpen(menuOpen);

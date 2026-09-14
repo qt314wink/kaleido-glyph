@@ -173,6 +173,32 @@ var Download = createLucideIcon("download", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Ellipsis = createLucideIcon("ellipsis", [
+	["circle", {
+		cx: "12",
+		cy: "12",
+		r: "1",
+		key: "41hilf"
+	}],
+	["circle", {
+		cx: "19",
+		cy: "12",
+		r: "1",
+		key: "1wjl8i"
+	}],
+	["circle", {
+		cx: "5",
+		cy: "12",
+		r: "1",
+		key: "1pcz8c"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Eraser = createLucideIcon("eraser", [
 	["path", {
 		d: "m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21",
@@ -579,4 +605,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Download as _, Spline as a, Aperture as b, Shuffle as c, Pin as d, Pause as f, Eraser as g, EyeOff as h, Square as i, RotateCw as l, Film as m, TriangleAlert as n, Sparkles as o, Palette as p, Timer as r, SlidersHorizontal as s, X as t, Play as u, Copy as v, Circle as y };
+export { Ellipsis as _, Spline as a, Circle as b, Shuffle as c, Pin as d, Pause as f, Eraser as g, EyeOff as h, Square as i, RotateCw as l, Film as m, TriangleAlert as n, Sparkles as o, Palette as p, Timer as r, SlidersHorizontal as s, X as t, Play as u, Download as v, Aperture as x, Copy as y };

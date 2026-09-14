@@ -1,3 +1,7 @@
+import { classifyIcon, isIconCoeffs, sampleIcon, type IconCoeffs, type IconKind } from "./icon";
+
+export type { IconCoeffs, IconKind };
+
 export const COLOR_MODES = [
   { id: "spectrum", label: "Spectrum" },
   { id: "prism", label: "Prism" },
@@ -14,6 +18,8 @@ export const PATH_MODES = [
   { id: "twin", label: "Twin", hint: "Opposite brush — desktop stand-in for two fingers" },
   { id: "orbit", label: "Orbit", hint: "Rotating companion" },
   { id: "echo", label: "Echo", hint: "Delayed ghost" },
+  { id: "rosette", label: "Rosette", hint: "Rotations only — no mirrors" },
+  { id: "field", label: "Field", hint: "A companion drifts on a curl" },
 ] as const;
 
 export type PathMode = (typeof PATH_MODES)[number]["id"];
@@ -78,6 +84,8 @@ export type KaleidoSettings = {
   hue: number;
   spin: boolean;
   frozen: boolean;
+  icon: IconCoeffs | null;
+  iconKind: IconKind | null;
 };
 
 export const DEFAULT_SETTINGS: KaleidoSettings = {
@@ -91,15 +99,17 @@ export const DEFAULT_SETTINGS: KaleidoSettings = {
   hue: 0,
   spin: true,
   frozen: false,
+  icon: null,
+  iconKind: null,
 };
 
 export const SEG_MIN = 2;
 export const SEG_MAX = 16;
-export const STORAGE_KEY = "kaleido.settings.v4";
+export const STORAGE_KEY = "kaleido.settings.v5";
 
 export const MACRO_SLOTS = ["1", "0"] as const;
 export type MacroSlot = (typeof MACRO_SLOTS)[number];
-export const MACRO_KEY = "kaleido.macros.v1";
+export const MACRO_KEY = "kaleido.macros.v2";
 
 export type KaleidoLook = Omit<KaleidoSettings, "frozen">;
 export type MacroBank = Record<MacroSlot, KaleidoLook | null>;
@@ -134,6 +144,7 @@ export function lookFrom(settings: KaleidoSettings): KaleidoLook {
 }
 
 export function applyLook(look: KaleidoLook, frozen: boolean): KaleidoSettings {
+  const icon = isIconCoeffs(look.icon) ? look.icon : null;
   return {
     segments: clampSegments(look.segments),
     colorMode: isColorMode(look.colorMode) ? look.colorMode : "spectrum",
@@ -145,6 +156,8 @@ export function applyLook(look: KaleidoLook, frozen: boolean): KaleidoSettings {
     hue: clamp(Number(look.hue) || 0, 0, 359),
     spin: look.spin !== false,
     frozen,
+    icon,
+    iconKind: icon ? (look.iconKind ?? classifyIcon(icon)) : null,
   };
 }
 
@@ -155,7 +168,7 @@ export function emptyMacros(): MacroBank {
 export function loadMacros(): MacroBank {
   if (typeof localStorage === "undefined") return emptyMacros();
   try {
-    const raw = localStorage.getItem(MACRO_KEY);
+    const raw = localStorage.getItem(MACRO_KEY) ?? localStorage.getItem("kaleido.macros.v1");
     if (!raw) return emptyMacros();
     const parsed = JSON.parse(raw) as Partial<Record<MacroSlot, KaleidoLook | null>>;
     const bank = emptyMacros();
@@ -190,6 +203,10 @@ export function cyclePersist(value: number) {
   return next?.value ?? PERSIST_STOPS[0].value;
 }
 
+export function togglePark(value: number) {
+  return value >= 100 ? 58 : 100;
+}
+
 export function cycleId<T extends { id: string }>(list: readonly T[], id: T["id"]): T["id"] {
   const idx = list.findIndex((item) => item.id === id);
   const next = list[(idx + 1) % list.length];
@@ -201,6 +218,7 @@ export function loadSettings(): KaleidoSettings {
   try {
     const raw =
       localStorage.getItem(STORAGE_KEY) ??
+      localStorage.getItem("kaleido.settings.v4") ??
       localStorage.getItem("kaleido.settings.v3") ??
       localStorage.getItem("kaleido.settings.v2");
     if (!raw) return { ...DEFAULT_SETTINGS };
@@ -211,6 +229,7 @@ export function loadSettings(): KaleidoSettings {
         ? 5
         : clamp(oldBrush, 1, 14)
       : 5;
+    const icon = isIconCoeffs(parsed.icon) ? parsed.icon : null;
     return {
       segments: clampSegments(Number(parsed.segments) || 8),
       colorMode: isColorMode(parsed.colorMode) ? parsed.colorMode : "spectrum",
@@ -222,6 +241,8 @@ export function loadSettings(): KaleidoSettings {
       hue: clamp(Number(parsed.hue) || 0, 0, 359),
       spin: parsed.spin !== false,
       frozen: false,
+      icon,
+      iconKind: icon ? (parsed.iconKind ?? classifyIcon(icon)) : null,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -243,16 +264,23 @@ export function randomSettings(): KaleidoSettings {
   const modes = COLOR_MODES.map((mode) => mode.id);
   const paths = PATH_MODES.map((mode) => mode.id);
   const lights = LIGHT_ACTIVITIES.map((mode) => mode.id);
+  const segments = segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8;
+  const sampled = sampleIcon(segments);
+  const ring = sampled.kind === "ring";
   return {
-    segments: segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8,
+    segments,
     colorMode: modes[Math.floor(Math.random() * modes.length)] ?? "spectrum",
     brush: Math.round(3 + Math.random() * 7),
     persist: Math.round(40 + Math.random() * 50),
-    pathMode: paths[Math.floor(Math.random() * paths.length)] ?? "solo",
+    pathMode: ring
+      ? "rosette"
+      : (paths[Math.floor(Math.random() * paths.length)] ?? "solo"),
     colorMotion: Math.random() > 0.35 ? "drift" : "hold",
     lightActivity: lights[Math.floor(Math.random() * lights.length)] ?? "pulse",
     hue: Math.floor(Math.random() * 360),
     spin: Math.random() > 0.35,
     frozen: false,
+    icon: sampled.coeffs,
+    iconKind: sampled.kind,
   };
 }

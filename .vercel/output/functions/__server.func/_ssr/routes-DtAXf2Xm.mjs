@@ -1,10 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { o as require_jsx_runtime, r as Slot, s as require_react } from "../_libs/@radix-ui/react-collection+[...].mjs";
-import { _ as Download, a as Spline, b as Aperture, c as Shuffle, d as Pin, f as Pause, g as Eraser, h as EyeOff, i as Square, l as RotateCw, m as Film, o as Sparkles, p as Palette, r as Timer, s as SlidersHorizontal, t as X, u as Play, v as Copy, y as Circle } from "../_libs/lucide-react.mjs";
+import { _ as Ellipsis, a as Spline, b as Circle, c as Shuffle, d as Pin, f as Pause, g as Eraser, h as EyeOff, i as Square, l as RotateCw, m as Film, o as Sparkles, p as Palette, r as Timer, s as SlidersHorizontal, t as X, u as Play, v as Download, x as Aperture, y as Copy } from "../_libs/lucide-react.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { i as SliderTrack, n as SliderRange, r as SliderThumb, t as Slider$1 } from "../_libs/@radix-ui/react-slider+[...].mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CACpRhwo.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DtAXf2Xm.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -75,6 +75,150 @@ var Slider = import_react.forwardRef(({ className, value, defaultValue, min = 0,
 	});
 });
 Slider.displayName = Slider$1.displayName;
+function rand(min, max) {
+	return min + Math.random() * (max - min);
+}
+function cpow(x, y, k) {
+	let px = 1;
+	let py = 0;
+	for (let i = 0; i < k; i++) {
+		const nx = px * x - py * y;
+		const ny = px * y + py * x;
+		px = nx;
+		py = ny;
+	}
+	return {
+		x: px,
+		y: py
+	};
+}
+function iconStep(x, y, c, n) {
+	const r2 = x * x + y * y;
+	const zn = cpow(x, y, n);
+	const zn1 = cpow(x, -y, Math.max(1, n - 1));
+	const amp = c.lam + c.a * r2 + c.b * zn.x;
+	let nx = amp * x - c.w * y + c.g * zn1.x;
+	let ny = amp * y + c.w * x + c.g * zn1.y;
+	if (nx * nx + ny * ny > 8) {
+		const s = .15 / Math.sqrt(Math.max(1e-8, x * x + y * y));
+		return {
+			x: x * s,
+			y: y * s,
+			escaped: true
+		};
+	}
+	return {
+		x: nx,
+		y: ny,
+		escaped: false
+	};
+}
+function nsAtOrigin(c) {
+	const rho = Math.hypot(c.lam, c.w);
+	const th = Math.atan2(c.w, c.lam);
+	const strong = [
+		1,
+		2,
+		3,
+		4
+	].some((k) => {
+		const a = Math.abs(th * k / (2 * Math.PI) % 1);
+		return Math.min(a, 1 - a) < .02;
+	});
+	return {
+		rho,
+		theta: th,
+		isNS: Math.abs(rho - 1) < .04 && Math.abs(c.w) > .05 && !strong,
+		strong
+	};
+}
+function acceptIcon(c, n) {
+	let x = .12;
+	let y = .07;
+	let esc = 0;
+	for (let i = 0; i < 4096; i++) {
+		const next = iconStep(x, y, c, n);
+		x = next.x;
+		y = next.y;
+		if (next.escaped) esc++;
+	}
+	return esc / 4096 < .3;
+}
+function sampleKind(kind) {
+	if (kind === "ring") {
+		const rho = Math.random() < .55 ? rand(.97, 1.04) : rand(1.04, 1.16);
+		const th = rand(.14, .34) * (Math.random() < .5 ? -1 : 1);
+		return {
+			lam: rho * Math.cos(th),
+			a: rand(-.8, -.2),
+			b: rand(-.45, .45),
+			g: rand(.45, 1.05),
+			w: rho * Math.sin(th)
+		};
+	}
+	if (kind === "sink") {
+		const rho = rand(.55, .85);
+		const th = rand(-.2, .2);
+		return {
+			lam: rho * Math.cos(th),
+			a: rand(-.4, 0),
+			b: rand(-.35, .35),
+			g: rand(.4, .9),
+			w: rho * Math.sin(th)
+		};
+	}
+	return {
+		lam: rand(-2.2, 2.2),
+		a: rand(-1, .2),
+		b: rand(-.5, .5),
+		g: rand(.4, 1.2),
+		w: Math.random() < .45 ? 0 : rand(-.4, .4)
+	};
+}
+function sampleIcon(n) {
+	const roll = Math.random();
+	const order = [
+		roll < .3 ? "ring" : roll < .6 ? "sink" : "cloak",
+		"cloak",
+		"ring",
+		"sink"
+	];
+	for (const kind of order) {
+		const tries = kind === "ring" ? 24 : 12;
+		for (let i = 0; i < tries; i++) {
+			const coeffs = sampleKind(kind);
+			const ns = nsAtOrigin(coeffs);
+			if (ns.strong) continue;
+			if (kind === "ring" && Math.abs(coeffs.w) < .08) continue;
+			if (kind === "ring" && ns.rho < .96) continue;
+			if (acceptIcon(coeffs, n)) return {
+				coeffs,
+				kind
+			};
+		}
+	}
+	return {
+		coeffs: sampleKind("sink"),
+		kind: "sink"
+	};
+}
+function classifyIcon(c) {
+	const ns = nsAtOrigin(c);
+	if (ns.isNS || ns.rho > 1.02 && ns.rho < 1.2 && c.a < -.15 && Math.abs(c.w) > .08) return "ring";
+	if (ns.rho < .9) return "sink";
+	return "cloak";
+}
+function isIconCoeffs(value) {
+	if (!value || typeof value !== "object") return false;
+	const c = value;
+	return [
+		c.lam,
+		c.a,
+		c.b,
+		c.g,
+		c.w
+	].every((n) => Number.isFinite(n));
+}
 var COLOR_MODES = [
 	{
 		id: "spectrum",
@@ -121,6 +265,16 @@ var PATH_MODES = [
 		id: "echo",
 		label: "Echo",
 		hint: "Delayed ghost"
+	},
+	{
+		id: "rosette",
+		label: "Rosette",
+		hint: "Rotations only — no mirrors"
+	},
+	{
+		id: "field",
+		label: "Field",
+		hint: "A companion drifts on a curl"
 	}
 ];
 var COLOR_MOTIONS = [{
@@ -204,9 +358,13 @@ var DEFAULT_SETTINGS = {
 	lightActivity: "pulse",
 	hue: 0,
 	spin: true,
-	frozen: false
+	frozen: false,
+	icon: null,
+	iconKind: null
 };
-var STORAGE_KEY = "kaleido.settings.v4";
+var STORAGE_KEY = "kaleido.settings.v5";
+var MACRO_SLOTS = ["1", "0"];
+var MACRO_KEY = "kaleido.macros.v2";
 function isColorMode(value) {
 	return COLOR_MODES.some((mode) => mode.id === value);
 }
@@ -222,6 +380,58 @@ function isLightActivity(value) {
 function clamp(n, min, max) {
 	return Math.min(max, Math.max(min, n));
 }
+function clampSegments(n) {
+	return clamp(Math.round(n), 2, 16);
+}
+function lookFrom(settings) {
+	const { frozen: _frozen, ...rest } = settings;
+	return rest;
+}
+function applyLook(look, frozen) {
+	const icon = isIconCoeffs(look.icon) ? look.icon : null;
+	return {
+		segments: clampSegments(look.segments),
+		colorMode: isColorMode(look.colorMode) ? look.colorMode : "spectrum",
+		brush: clamp(Number(look.brush) || 5, 1, 14),
+		persist: clamp(Number(look.persist) || 58, 0, 100),
+		pathMode: isPathMode(look.pathMode) ? look.pathMode : "solo",
+		colorMotion: isColorMotion(look.colorMotion) ? look.colorMotion : "drift",
+		lightActivity: isLightActivity(look.lightActivity) ? look.lightActivity : "pulse",
+		hue: clamp(Number(look.hue) || 0, 0, 359),
+		spin: look.spin !== false,
+		frozen,
+		icon,
+		iconKind: icon ? look.iconKind ?? classifyIcon(icon) : null
+	};
+}
+function emptyMacros() {
+	return {
+		"1": null,
+		"0": null
+	};
+}
+function loadMacros() {
+	if (typeof localStorage === "undefined") return emptyMacros();
+	try {
+		const raw = localStorage.getItem("kaleido.macros.v2") ?? localStorage.getItem("kaleido.macros.v1");
+		if (!raw) return emptyMacros();
+		const parsed = JSON.parse(raw);
+		const bank = emptyMacros();
+		for (const slot of MACRO_SLOTS) {
+			const look = parsed[slot];
+			if (look && typeof look === "object") bank[slot] = lookFrom(applyLook(look, false));
+		}
+		return bank;
+	} catch {
+		return emptyMacros();
+	}
+}
+function saveMacros(bank) {
+	if (typeof localStorage === "undefined") return;
+	try {
+		localStorage.setItem(MACRO_KEY, JSON.stringify(bank));
+	} catch {}
+}
 function persistLabel(persist) {
 	if (persist >= 100) return "Park";
 	if (persist >= 70) return "Long";
@@ -231,19 +441,23 @@ function persistLabel(persist) {
 function cyclePersist(value) {
 	return PERSIST_STOPS.find((stop) => stop.value > value + 3)?.value ?? PERSIST_STOPS[0].value;
 }
+function togglePark(value) {
+	return value >= 100 ? 58 : 100;
+}
 function cycleId(list, id) {
 	return list[(list.findIndex((item) => item.id === id) + 1) % list.length]?.id ?? list[0].id;
 }
 function loadSettings() {
 	if (typeof localStorage === "undefined") return { ...DEFAULT_SETTINGS };
 	try {
-		const raw = localStorage.getItem("kaleido.settings.v4") ?? localStorage.getItem("kaleido.settings.v3") ?? localStorage.getItem("kaleido.settings.v2");
+		const raw = localStorage.getItem("kaleido.settings.v5") ?? localStorage.getItem("kaleido.settings.v4") ?? localStorage.getItem("kaleido.settings.v3") ?? localStorage.getItem("kaleido.settings.v2");
 		if (!raw) return { ...DEFAULT_SETTINGS };
 		const parsed = JSON.parse(raw);
 		const oldBrush = Number(parsed.brush);
 		const brush = Number.isFinite(oldBrush) ? oldBrush > 14 ? 5 : clamp(oldBrush, 1, 14) : 5;
+		const icon = isIconCoeffs(parsed.icon) ? parsed.icon : null;
 		return {
-			segments: clamp(Math.round(Number(parsed.segments) || 8), 3, 16),
+			segments: clampSegments(Number(parsed.segments) || 8),
 			colorMode: isColorMode(parsed.colorMode) ? parsed.colorMode : "spectrum",
 			brush,
 			persist: clamp(Number(parsed.persist ?? 58), 0, 100),
@@ -252,7 +466,9 @@ function loadSettings() {
 			lightActivity: isLightActivity(parsed.lightActivity) ? parsed.lightActivity : "pulse",
 			hue: clamp(Number(parsed.hue) || 0, 0, 359),
 			spin: parsed.spin !== false,
-			frozen: false
+			frozen: false,
+			icon,
+			iconKind: icon ? parsed.iconKind ?? classifyIcon(icon) : null
 		};
 	} catch {
 		return { ...DEFAULT_SETTINGS };
@@ -267,28 +483,35 @@ function saveSettings(settings) {
 }
 function randomSettings() {
 	const segmentChoices = [
+		2,
+		3,
 		4,
+		5,
 		6,
 		8,
 		10,
 		12,
-		14,
 		16
 	];
 	const modes = COLOR_MODES.map((mode) => mode.id);
 	const paths = PATH_MODES.map((mode) => mode.id);
 	const lights = LIGHT_ACTIVITIES.map((mode) => mode.id);
+	const segments = segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8;
+	const sampled = sampleIcon(segments);
+	const ring = sampled.kind === "ring";
 	return {
-		segments: segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8,
+		segments,
 		colorMode: modes[Math.floor(Math.random() * modes.length)] ?? "spectrum",
 		brush: Math.round(3 + Math.random() * 7),
 		persist: Math.round(40 + Math.random() * 50),
-		pathMode: paths[Math.floor(Math.random() * paths.length)] ?? "solo",
+		pathMode: ring ? "rosette" : paths[Math.floor(Math.random() * paths.length)] ?? "solo",
 		colorMotion: Math.random() > .35 ? "drift" : "hold",
 		lightActivity: lights[Math.floor(Math.random() * lights.length)] ?? "pulse",
 		hue: Math.floor(Math.random() * 360),
 		spin: Math.random() > .35,
-		frozen: false
+		frozen: false,
+		icon: sampled.coeffs,
+		iconKind: sampled.kind
 	};
 }
 function Chip({ active, children, onClick, hint }) {
@@ -300,6 +523,41 @@ function Chip({ active, children, onClick, hint }) {
 		children
 	});
 }
+function macroCaption(slot, look) {
+	if (!look) return `Save ${slot}`;
+	return `${slot} · ${COLOR_MODES.find((mode) => mode.id === look.colorMode)?.label ?? "Look"}`;
+}
+function MacroChip({ slot, look, active, onRecall, onSave }) {
+	const hold = (0, import_react.useRef)(0);
+	const saved = (0, import_react.useRef)(false);
+	const filled = Boolean(look);
+	const caption = macroCaption(slot, look);
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+		type: "button",
+		"data-testid": `btn-macro-${slot}`,
+		title: filled ? `${caption} · tap recall · hold to save` : `${caption} · tap to program · hold to save`,
+		onPointerDown: () => {
+			saved.current = false;
+			window.clearTimeout(hold.current);
+			hold.current = window.setTimeout(() => {
+				saved.current = true;
+				onSave();
+			}, 480);
+		},
+		onPointerUp: () => window.clearTimeout(hold.current),
+		onPointerCancel: () => window.clearTimeout(hold.current),
+		onPointerLeave: () => window.clearTimeout(hold.current),
+		onClick: () => {
+			if (saved.current) {
+				saved.current = false;
+				return;
+			}
+			onRecall();
+		},
+		className: cn("h-10 min-w-20 shrink-0 rounded-md px-3.5 text-sm font-medium transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]", active ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2 hover:text-fg"),
+		children: caption
+	});
+}
 function downloadAsset(href, filename) {
 	const a = document.createElement("a");
 	a.href = href;
@@ -308,10 +566,11 @@ function downloadAsset(href, filename) {
 	a.click();
 	a.remove();
 }
-function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, clipMax, tuneOpen, dialOpen, helpOpen, recordEnabled, pinned, hiddenChrome, wide, lens, focusId, onChange, onRandomize, onClear, onExport, onCopy, onRecord, onRecordSeconds, onToggleTune, onToggleDial, onTogglePin, onToggleHelp, onHideChrome, onCloseMenus, onCyclePersist, onCycleLight, onChromeHeight, onFocusId }) {
+function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, clipMax, tuneOpen, dialOpen, helpOpen, moreOpen, recordEnabled, pinned, hiddenChrome, flower: flowerChrome, lens, focusId, macros, macroSlot, onChange, onRandomize, onClear, onExport, onCopy, onRecord, onRecordSeconds, onToggleTune, onToggleDial, onTogglePin, onToggleHelp, onToggleMore, onHideChrome, onCloseMenus, onTogglePark, onCycleLight, onRecallMacro, onSaveMacro, onChromeHeight, onFocusId }) {
 	const chromeRef = (0, import_react.useRef)(null);
 	const remain = Math.max(0, clipMax - clipElapsed);
 	const recording = clipState === "recording";
+	const parked = settings.persist >= 100;
 	const path = PATH_MODES.find((mode) => mode.id === settings.pathMode);
 	const color = COLOR_MODES.find((mode) => mode.id === settings.colorMode);
 	(0, import_react.useEffect)(() => {
@@ -330,6 +589,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 		tuneOpen,
 		dialOpen,
 		helpOpen,
+		moreOpen,
 		onChromeHeight
 	]);
 	const cyclePath = () => onChange({ pathMode: cycleId(PATH_MODES, settings.pathMode) });
@@ -361,10 +621,11 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 		},
 		{
 			id: "trail",
-			label: `Trail ${persistLabel(settings.persist)}`,
+			label: parked ? "Parked" : "Park",
 			testId: "btn-persist",
+			active: parked,
 			sticky: true,
-			onClick: onCyclePersist,
+			onClick: onTogglePark,
 			icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Timer, { className: "size-5" })
 		},
 		{
@@ -417,10 +678,10 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 	};
 	const focused = petals.find((petal) => petal.id === focusId);
 	const showPetals = dialOpen && !tuneOpen && !hiddenChrome;
-	const flower = showPetals && wide;
-	const dock = showPetals && !wide;
+	const flower = showPetals && flowerChrome;
+	const dock = showPetals && !flowerChrome;
 	const hasLens = lens.radius > 40;
-	const petalR = hasLens ? Math.max(72, Math.min(lens.radius + 36, lens.cx - 28, Math.max(72, lens.cy - 72))) : 110;
+	const petalR = hasLens ? lens.radius + 52 : 110;
 	if (hiddenChrome) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -445,7 +706,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 				const y = hasLens ? lens.cy + Math.sin(ang) * petalR : Math.sin(ang) * petalR;
 				return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					type: "button",
-					"data-testid": wide ? petal.testId : void 0,
+					"data-testid": flower ? petal.testId : void 0,
 					title: petal.label,
 					"aria-label": petal.label,
 					"aria-hidden": !flower,
@@ -519,7 +780,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
 									id: "segments",
 									"data-testid": "slider-segments",
-									min: 3,
+									min: 2,
 									max: 16,
 									step: 1,
 									value: [settings.segments],
@@ -556,7 +817,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 							]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-3 flex gap-1 overflow-x-auto",
+							className: "mt-3 flex flex-wrap gap-1",
 							role: "radiogroup",
 							"aria-label": "Color motion",
 							children: [COLOR_MOTIONS.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
@@ -565,14 +826,14 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 								onClick: () => onChange({ colorMotion: mode.id }),
 								children: mode.label
 							}, mode.id)), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
-								active: settings.persist >= 100,
-								onClick: () => onChange({ persist: 100 }),
+								active: parked,
+								onClick: onTogglePark,
 								hint: "Lines stay until you change the decay",
 								children: "Park"
 							})]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "mt-2 flex flex-nowrap gap-1 overflow-x-auto",
+							className: "mt-2 flex flex-wrap gap-1",
 							role: "radiogroup",
 							"aria-label": "Light activity",
 							children: LIGHT_ACTIVITIES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
@@ -581,6 +842,21 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 								onClick: () => onChange({ lightActivity: mode.id }),
 								children: mode.label
 							}, mode.id))
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mt-2 flex flex-wrap items-center gap-1",
+							role: "group",
+							"aria-label": "Macro slots",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "w-16 shrink-0 text-xs font-medium text-muted",
+								children: "Slots"
+							}), MACRO_SLOTS.map((slot) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MacroChip, {
+								slot,
+								look: macros[slot],
+								active: macroSlot === slot,
+								onRecall: () => onRecallMacro(slot),
+								onSave: () => onSaveMacro(slot)
+							}, slot))]
 						}),
 						settings.colorMotion === "hold" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "mt-2 flex items-center gap-3",
@@ -606,7 +882,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 							]
 						}) : null,
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-3 flex gap-1 overflow-x-auto",
+							className: "mt-3 flex flex-wrap gap-1",
 							role: "radiogroup",
 							"aria-label": "Clip length",
 							children: [RECORD_OPTIONS.map((seconds) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Chip, {
@@ -643,25 +919,43 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
 									type: "button",
+									"data-testid": "btn-export",
+									size: "sm",
+									variant: "secondary",
+									onClick: onExport,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, {}), exported ? "Saved" : "PNG"]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+									type: "button",
+									size: "sm",
+									variant: "secondary",
+									onClick: onHideChrome,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(EyeOff, {}), "Hide"]
+								})
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "mt-2",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+								type: "button",
+								"data-testid": "btn-more",
+								size: "sm",
+								variant: moreOpen ? "active" : "secondary",
+								onClick: onToggleMore,
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ellipsis, {}), "More"]
+							})
+						}),
+						moreOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mt-2 grid grid-cols-4 gap-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+									type: "button",
 									"data-testid": "btn-copy",
 									size: "sm",
 									variant: "secondary",
 									onClick: onCopy,
 									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, {}), copied ? "Copied" : "Copy"]
 								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-export",
-									size: "sm",
-									variant: "secondary",
-									onClick: onExport,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, {}), exported ? "Saved" : "PNG"]
-								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-2 grid grid-cols-4 gap-2",
-							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
 									type: "button",
 									"data-testid": "btn-social-gif",
@@ -678,13 +972,6 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 									onClick: () => downloadAsset("/kaleido-loop.mp4", "kaleido-loop.mp4"),
 									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Film, {}), "MP4"]
 								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									size: "sm",
-									variant: "secondary",
-									onClick: onHideChrome,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(EyeOff, {}), "Hide"]
-								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
 									type: "button",
 									"data-testid": "btn-help",
@@ -694,44 +981,28 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 									children: "Keys"
 								})
 							]
-						}),
-						helpOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ul", {
+						}) : null,
+						moreOpen && helpOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ul", {
 							className: "mt-3 space-y-1 text-xs leading-relaxed text-muted",
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Space opens the dial · Arrows choose · Enter locks · Esc closes" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "F freeze · V record · R random · E save · C clear · L decay" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "WASD paint · Alt or right-drag a second brush · B pin" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "H hide UI · P path · T tune · Wheel decay · 1–6 color" })
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "H hide UI · P path · T tune · Wheel decay · 2–9 folds" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "1 and 0 recall macros · Shift+1 / Shift+0 overwrite · Hold slot to save" }),
+								settings.iconKind ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+									"data-testid": "icon-kind",
+									children: ["Idle · ", settings.iconKind]
+								}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Idle · hypotrochoid until Random" })
 							]
 						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "mt-3 hidden text-xs leading-relaxed text-pretty text-muted sm:block",
 							children: "Space opens the menu. Arrows pick a control, Enter locks it. Lines decay unless Park is on."
 						})
 					]
-				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [dock ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [dock ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "pointer-events-auto mb-2 w-full max-w-sm rounded-2xl bg-surface p-2 shadow-[var(--shadow-border)]",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "mb-1 flex items-center gap-2 px-1",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "w-10 shrink-0 text-xs font-medium text-muted",
-								children: "Decay"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
-								"data-testid": "slider-persist-dock",
-								min: 0,
-								max: 100,
-								step: 1,
-								value: [settings.persist],
-								onValueChange: (value) => onChange({ persist: value[0] ?? 88 }),
-								"aria-label": "How long trails linger"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "w-10 text-right text-xs font-medium tabular-nums text-fg",
-								children: persistLabel(settings.persist)
-							})
-						]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						className: "grid grid-cols-3 gap-1",
 						children: petals.map((petal) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 							type: "button",
@@ -747,7 +1018,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 								children: petal.label.split(" ")[0]
 							})]
 						}, petal.id))
-					})]
+					})
 				}) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					type: "button",
 					"data-testid": "btn-dial",
@@ -778,8 +1049,8 @@ var WASD = /* @__PURE__ */ new Set([
 	"KeyW",
 	"KeyS"
 ]);
-var MAX_STROKES = 90;
 var MAX_PTS = 72;
+var FIELD_N = 24;
 function colorAt(mode, motion, hue, time, x, y, radius) {
 	const u = Math.min(1, Math.hypot(x, y) / Math.max(1, radius));
 	const ang = Math.atan2(y, x);
@@ -824,26 +1095,27 @@ function colorAt(mode, motion, hue, time, x, y, radius) {
 		};
 	}
 }
-function activityAt(kind, time, along, seed) {
+function activityAt(kind, time, along, seed, boost) {
+	const lift = 1 + .55 * boost;
 	switch (kind) {
 		case "steady": return {
-			a: .78 + .1 * Math.sin(time * 1.6 + seed),
+			a: (.78 + .1 * Math.sin(time * 1.6 + seed)) * lift,
 			h: 0,
 			w: 1
 		};
 		case "pulse": {
 			const wave = .5 + .5 * Math.sin(time * 2.8 + seed);
 			return {
-				a: .22 + .78 * wave,
+				a: (.22 + .78 * wave) * lift,
 				h: 0,
-				w: .82 + .28 * wave
+				w: .82 + .28 * wave + .2 * boost
 			};
 		}
 		case "blink": {
 			const beat = (time * 2.15 + seed * .15) % 1.15;
 			const on = beat < .62 || beat > .74 && beat < .88;
 			return {
-				a: on ? .95 : .05,
+				a: (on ? .95 : .05) * lift,
 				h: 0,
 				w: on ? 1 : .7
 			};
@@ -854,7 +1126,7 @@ function activityAt(kind, time, along, seed) {
 			const prox = Math.min(d, 1 - d);
 			const hot = prox < .1;
 			return {
-				a: hot ? 1 : .1 + .16 * (1 - prox),
+				a: (hot ? 1 : .1 + .16 * (1 - prox)) * lift,
 				h: along * 50,
 				w: hot ? 1.45 : .7
 			};
@@ -863,7 +1135,7 @@ function activityAt(kind, time, along, seed) {
 			const tw = Math.sin(time * 6.8 + along * 22 + seed * 11);
 			const lit = tw > .42;
 			return {
-				a: lit ? .2 + (tw - .42) * 1.6 : .08,
+				a: (lit ? .2 + (tw - .42) * 1.6 : .08) * lift,
 				h: lit ? 24 : 0,
 				w: lit ? 1.25 : .72
 			};
@@ -871,7 +1143,7 @@ function activityAt(kind, time, along, seed) {
 		case "strobe": {
 			const on = Math.sin(time * 16 + seed * 4) > .15;
 			return {
-				a: on ? 1 : .04,
+				a: (on ? 1 : .04) * lift,
 				h: on ? 10 : 0,
 				w: on ? 1.12 : .75
 			};
@@ -889,6 +1161,9 @@ function pointerPressure(e) {
 function hsla(c, a) {
 	return `hsla(${(c.h % 360 + 360) % 360}, ${c.s}%, ${c.l}%, ${Math.max(0, Math.min(1, a))})`;
 }
+function isCoarse() {
+	return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
 var KaleidoEngine = class {
 	display;
 	root;
@@ -900,9 +1175,12 @@ var KaleidoEngine = class {
 	cy = 0;
 	radius = 0;
 	bottomInset = 0;
+	topInset = 0;
 	rimPad = 0;
 	settings;
-	time = 0;
+	inkTime = 0;
+	lightTime = 0;
+	aliveTime = 0;
 	spinAngle = 0;
 	raf = 0;
 	lastTs = 0;
@@ -912,6 +1190,8 @@ var KaleidoEngine = class {
 	sin = /* @__PURE__ */ new Float64Array(8);
 	brushes = /* @__PURE__ */ new Map();
 	echoes = /* @__PURE__ */ new Map();
+	fieldEcho = /* @__PURE__ */ new Map();
+	field = /* @__PURE__ */ new Float32Array(576);
 	keys = /* @__PURE__ */ new Set();
 	keyX = 0;
 	keyY = 0;
@@ -940,8 +1220,13 @@ var KaleidoEngine = class {
 	strokes = [];
 	live = /* @__PURE__ */ new Map();
 	menuOpen = false;
+	icons = [];
+	iconK = 0;
 	constructor(display, root, settings) {
-		const dctx = display.getContext("2d", { alpha: false });
+		const dctx = display.getContext("2d", {
+			alpha: false,
+			colorSpace: "srgb"
+		});
 		if (!dctx) throw new Error("Canvas 2D is not available");
 		this.display = display;
 		this.root = root;
@@ -949,7 +1234,9 @@ var KaleidoEngine = class {
 		this.settings = { ...settings };
 		this.rebuildTrig();
 		this.reseedIdle();
+		this.rebuildField(0);
 		this.reduced = prefersReducedMotion();
+		this.expose();
 	}
 	start() {
 		if (this.running) return;
@@ -970,11 +1257,14 @@ var KaleidoEngine = class {
 	}
 	setSettings(next) {
 		const segsChanged = next.segments !== this.settings.segments;
+		const iconChanged = next.icon !== this.settings.icon;
 		const froze = next.frozen && !this.settings.frozen;
 		this.settings = { ...next };
 		if (segsChanged) this.rebuildTrig();
 		if (next.frozen) this.brushes.clear();
 		if (froze) this.pulse();
+		if ((iconChanged || segsChanged) && next.icon) this.seedIcons(next.icon, next.segments);
+		if (!next.icon) this.icons = [];
 		this.present();
 	}
 	setMenuOpen(open) {
@@ -989,6 +1279,11 @@ var KaleidoEngine = class {
 	setRimPad(cssPx) {
 		if (Math.abs(cssPx - this.rimPad) < .5) return;
 		this.rimPad = cssPx;
+		this.layout(true);
+	}
+	setTopInset(cssPx) {
+		if (Math.abs(cssPx - this.topInset) < .5) return;
+		this.topInset = cssPx;
 		this.layout(true);
 	}
 	setLayoutHandler(cb) {
@@ -1010,6 +1305,23 @@ var KaleidoEngine = class {
 	}
 	canvas() {
 		return this.display;
+	}
+	expose() {
+		const el = this.display;
+		el.__kaleido = { clocks: () => ({
+			ink: this.inkTime,
+			light: this.lightTime,
+			spin: this.spinAngle,
+			k: this.iconK,
+			alive: this.aliveTime,
+			frozen: this.settings.frozen,
+			persist: this.settings.persist,
+			path: this.settings.pathMode,
+			n: this.settings.segments,
+			kind: this.settings.iconKind,
+			strokeN: this.strokes.length,
+			layout: this.getLayout()
+		}) };
 	}
 	pinned() {
 		return this.pin !== null || this.rightHeld || this.altHeld;
@@ -1043,15 +1355,23 @@ var KaleidoEngine = class {
 	clear() {
 		this.strokes = [];
 		this.live.clear();
+		this.icons = [];
 		this.hasIdle = false;
 		this.brushes.clear();
 		this.echoes.clear();
+		this.fieldEcho.clear();
 		this.unpin();
 		this.resumeIdleAt = Number.POSITIVE_INFINITY;
 		this.present();
 	}
 	burst(seed = false) {
 		this.reseedIdle();
+		if (this.settings.icon) {
+			this.seedIcons(this.settings.icon, this.settings.segments);
+			this.resumeIdleAt = this.inkTime;
+			this.present();
+			return;
+		}
 		const steps = seed ? 220 : 160;
 		const t0 = Math.random() * TAU;
 		const dt = .05 + Math.random() * .014;
@@ -1070,7 +1390,7 @@ var KaleidoEngine = class {
 		this.lastIdleY = prevY;
 		this.hasIdle = true;
 		this.idleT = t0 + steps * dt;
-		this.resumeIdleAt = this.time;
+		this.resumeIdleAt = this.inkTime;
 		this.present();
 	}
 	exportPng() {
@@ -1107,6 +1427,15 @@ var KaleidoEngine = class {
 		} catch {
 			return false;
 		}
+	}
+	strokeCap() {
+		return isCoarse() ? 40 : 64;
+	}
+	strokeWeight() {
+		let w = 0;
+		const parked = this.parkedGlobal();
+		for (const s of this.strokes) w += parked || s.pinned ? 2 : 1;
+		return w;
 	}
 	bind() {
 		this.display.addEventListener("pointerdown", this.onPointerDown);
@@ -1328,11 +1657,13 @@ var KaleidoEngine = class {
 	releaseBrush(id) {
 		this.brushes.delete(id);
 		this.echoes.delete(id);
+		this.fieldEcho.delete(id);
 		for (const key of [
 			`${id}:main`,
 			`${id}:twin`,
 			`${id}:orbit`,
-			`${id}:echo`
+			`${id}:echo`,
+			`${id}:field`
 		]) this.live.delete(key);
 	}
 	rebuildTrig() {
@@ -1363,10 +1694,70 @@ var KaleidoEngine = class {
 			y: a * Math.sin(t) - d * Math.sin(ratio * t)
 		};
 	}
+	rebuildField(t) {
+		const bx = this.lastPX / Math.max(1, this.radius);
+		const by = this.lastPY / Math.max(1, this.radius);
+		for (let j = 0; j < FIELD_N; j++) for (let i = 0; i < FIELD_N; i++) {
+			const u = i / FIELD_N - .5;
+			const v = j / FIELD_N - .5;
+			this.field[j * FIELD_N + i] = Math.atan2(Math.sin((u + .15) * 6 + t * .18) + v * 1.4 + by * .35, Math.cos((v - .1) * 6 - t * .14) - u * 1.4 + bx * .35);
+		}
+	}
+	fieldAngle(x, y) {
+		const n = FIELD_N;
+		const gx = (x / Math.max(1, this.radius) + 1) * .5 * 23;
+		const gy = (y / Math.max(1, this.radius) + 1) * .5 * 23;
+		const i = Math.max(0, Math.min(22, Math.floor(gx)));
+		const j = Math.max(0, Math.min(22, Math.floor(gy)));
+		return this.field[j * n + i] ?? 0;
+	}
+	seedIcons(c, n) {
+		const pts = [];
+		for (let i = 0; i < 512; i++) {
+			const ang = i / 512 * TAU;
+			const r = .08 + i % 17 * .011;
+			let x = Math.cos(ang) * r;
+			let y = Math.sin(ang) * r;
+			for (let k = 0; k < 80; k++) {
+				const next = iconStep(x, y, c, n);
+				x = next.x;
+				y = next.y;
+			}
+			pts.push({
+				x,
+				y,
+				px: x,
+				py: y,
+				qx: x,
+				qy: y,
+				seed: i * .137
+			});
+		}
+		this.icons = pts;
+		this.iconK = 80;
+	}
+	stepIcons() {
+		const c = this.settings.icon;
+		if (!c || this.icons.length === 0) return;
+		const n = this.settings.segments;
+		const steps = this.settings.iconKind === "ring" ? 3 : 1;
+		for (const p of this.icons) {
+			p.qx = p.px;
+			p.qy = p.py;
+			p.px = p.x;
+			p.py = p.y;
+			for (let k = 0; k < steps; k++) {
+				const next = iconStep(p.x, p.y, c, n);
+				p.x = next.x;
+				p.y = next.y;
+			}
+		}
+		this.iconK += steps;
+	}
 	pickDpr() {
 		const raw = window.devicePixelRatio || 1;
 		if ((navigator.deviceMemory ?? 8) <= 2 || (navigator.hardwareConcurrency || 4) <= 2) return 1;
-		if (window.matchMedia("(pointer: coarse)").matches) return Math.min(1.5, raw);
+		if (isCoarse()) return Math.min(1.5, raw);
 		return Math.min(2, raw);
 	}
 	layout(force = false) {
@@ -1383,12 +1774,13 @@ var KaleidoEngine = class {
 		this.height = h;
 		this.display.width = w;
 		this.display.height = h;
+		const top = this.topInset * dpr;
 		const bottom = this.bottomInset * dpr;
 		const pad = this.rimPad * dpr;
-		const usableH = Math.max(1, h - bottom);
+		const usableH = Math.max(1, h - bottom - top);
 		this.cx = w / 2;
-		this.cy = usableH / 2;
-		this.radius = Math.max(24, Math.min(this.cx, this.cy) - 16 * dpr - pad);
+		this.cy = top + usableH / 2;
+		this.radius = Math.max(24, Math.min(this.cx, usableH / 2) - 16 * dpr - pad);
 		if (!Number.isFinite(this.radius) || this.radius < 24) this.radius = 24;
 		this.reseedIdle();
 		this.present();
@@ -1402,7 +1794,8 @@ var KaleidoEngine = class {
 		return this.settings.persist >= 100;
 	}
 	allocStroke(pinned, width) {
-		while (this.strokes.length >= MAX_STROKES) {
+		const cap = this.strokeCap();
+		while (this.strokeWeight() >= cap) {
 			const idx = this.strokes.findIndex((s) => !s.pinned);
 			this.strokes.splice(idx === -1 ? 0 : idx, 1);
 		}
@@ -1410,7 +1803,7 @@ var KaleidoEngine = class {
 			xs: new Float32Array(MAX_PTS),
 			ys: new Float32Array(MAX_PTS),
 			len: 0,
-			born: this.time,
+			born: this.inkTime,
 			pinned,
 			seed: Math.random() * TAU,
 			width: Math.max(.7, width)
@@ -1457,7 +1850,7 @@ var KaleidoEngine = class {
 			if (twin.len === 0) this.pushPoint(twin, -x0, -y0);
 			this.strokeTo(twin, -x0, -y0, -x1, -y1);
 		} else if (mode === "orbit") {
-			const a = this.time * 1.25;
+			const a = this.lightTime * 1.25;
 			const c = Math.cos(a);
 			const s = Math.sin(a);
 			const ox0 = x0 * c - y0 * s;
@@ -1479,18 +1872,53 @@ var KaleidoEngine = class {
 		buf.push({
 			x,
 			y,
-			t: this.time
+			t: this.inkTime
 		});
-		const horizon = this.time - .55;
+		const horizon = this.inkTime - .28;
 		while (buf.length > 2 && (buf[1]?.t ?? 0) < horizon) buf.shift();
 		const ghost = buf[0];
-		if (ghost && this.time - ghost.t >= .45) {
+		if (ghost && this.inkTime - ghost.t >= .18) {
 			const next = buf[1] ?? ghost;
 			const width = this.settings.brush * (.4 + .3 * pressure);
 			const s = this.liveStroke(`${id}:echo`, pinned, width);
 			if (s.len === 0) this.pushPoint(s, ghost.x, ghost.y);
 			this.strokeTo(s, ghost.x, ghost.y, next.x, next.y);
 		}
+	}
+	feedField(id, x, y, dt, pressure, pinned) {
+		if (this.settings.pathMode !== "field") return;
+		let buf = this.echoes.get(id);
+		if (!buf) {
+			buf = [];
+			this.echoes.set(id, buf);
+		}
+		buf.push({
+			x,
+			y,
+			t: this.inkTime
+		});
+		const horizon = this.inkTime - .28;
+		while (buf.length > 2 && (buf[1]?.t ?? 0) < horizon) buf.shift();
+		const ghost = buf[0];
+		if (!ghost || this.inkTime - ghost.t < .18) return;
+		let p = this.fieldEcho.get(id);
+		if (!p) {
+			p = {
+				x: ghost.x,
+				y: ghost.y
+			};
+			this.fieldEcho.set(id, p);
+		}
+		const ang = this.fieldAngle(p.x, p.y);
+		const step = .012 * this.radius * Math.min(2.2, dt * 60);
+		const nx = p.x + Math.cos(ang) * step + (ghost.x - p.x) * .04;
+		const ny = p.y + Math.sin(ang) * step + (ghost.y - p.y) * .04;
+		const width = this.settings.brush * (.38 + .28 * pressure);
+		const s = this.liveStroke(`${id}:field`, pinned, width);
+		if (s.len === 0) this.pushPoint(s, p.x, p.y);
+		this.strokeTo(s, p.x, p.y, nx, ny);
+		p.x = nx;
+		p.y = ny;
 	}
 	cullStrokes() {
 		if (this.parkedGlobal()) return;
@@ -1499,13 +1927,13 @@ var KaleidoEngine = class {
 		this.strokes = this.strokes.filter((s) => {
 			if (s.pinned && pinOn) return true;
 			if (s.pinned && !pinOn) s.pinned = false;
-			return this.time - s.born < life;
+			return this.inkTime - s.born < life;
 		});
 	}
 	fadeOf(s) {
 		if (this.parkedGlobal() || s.pinned && this.pin !== null) return 1;
 		const life = this.lifetime();
-		const age = this.time - s.born;
+		const age = this.inkTime - s.born;
 		const t = Math.max(0, 1 - age / life);
 		return t * t;
 	}
@@ -1513,10 +1941,18 @@ var KaleidoEngine = class {
 		const a = this.settings.lightActivity;
 		return a === "chase" || a === "firefly";
 	}
+	idleBoost() {
+		if (this.reduced) return 0;
+		return Math.max(0, 1 - this.aliveTime / 2);
+	}
+	mirrors() {
+		return this.settings.pathMode !== "rosette";
+	}
 	drawPolyline(ctx, s, ca, sa, mirror, color, fade) {
 		const actKind = this.settings.lightActivity;
-		const w = Math.max(.85, s.width * .32 * this.dpr);
+		const w = Math.max(.7, s.width * .22 * this.dpr);
 		const alongNeeded = this.needsAlong();
+		const boost = this.idleBoost();
 		const tx = (x, y) => {
 			if (mirror) return {
 				x: x * ca + y * sa,
@@ -1528,7 +1964,7 @@ var KaleidoEngine = class {
 			};
 		};
 		if (!alongNeeded) {
-			const act = activityAt(actKind, this.time, .5, s.seed);
+			const act = activityAt(actKind, this.lightTime, .5, s.seed, boost);
 			if (act.a * fade < .02) return;
 			ctx.beginPath();
 			for (let i = 0; i < s.len; i++) {
@@ -1553,7 +1989,7 @@ var KaleidoEngine = class {
 		}
 		for (let i = 1; i < s.len; i++) {
 			const along = i / Math.max(1, s.len - 1);
-			const act = activityAt(actKind, this.time, along, s.seed);
+			const act = activityAt(actKind, this.lightTime, along, s.seed, boost);
 			if (act.a * fade < .03) continue;
 			const a = tx(s.xs[i - 1] ?? 0, s.ys[i - 1] ?? 0);
 			const b = tx(s.xs[i] ?? 0, s.ys[i] ?? 0);
@@ -1568,6 +2004,35 @@ var KaleidoEngine = class {
 			ctx.lineWidth = w * act.w;
 			ctx.stroke();
 		}
+	}
+	drawIcons(ctx) {
+		if (this.icons.length === 0) return;
+		const scale = this.radius * .92;
+		const ring = this.settings.iconKind === "ring";
+		const boost = this.idleBoost();
+		ctx.save();
+		ctx.globalCompositeOperation = "source-over";
+		for (const p of this.icons) {
+			const x = p.x * scale;
+			const y = p.y * scale;
+			const ang = Math.atan2(p.y - p.py, p.x - p.px);
+			const color = colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue + ang * 180 / Math.PI, this.lightTime, x, y, this.radius);
+			const act = activityAt(this.settings.lightActivity, this.lightTime, p.seed % 1, p.seed, boost);
+			ctx.fillStyle = hsla(color, .72 * act.a);
+			ctx.beginPath();
+			ctx.arc(x, y, Math.max(.7, 1.15 * this.dpr * act.w), 0, TAU);
+			ctx.fill();
+			if (ring) {
+				ctx.strokeStyle = hsla(color, .45 * act.a);
+				ctx.lineWidth = Math.max(.6, .7 * this.dpr);
+				ctx.beginPath();
+				ctx.moveTo(p.qx * scale, p.qy * scale);
+				ctx.lineTo(p.px * scale, p.py * scale);
+				ctx.lineTo(x, y);
+				ctx.stroke();
+			}
+		}
+		ctx.restore();
 	}
 	present() {
 		const ctx = this.dctx;
@@ -1587,18 +2052,20 @@ var KaleidoEngine = class {
 		ctx.lineCap = "round";
 		ctx.lineJoin = "round";
 		ctx.globalCompositeOperation = "source-over";
+		this.drawIcons(ctx);
 		const n = this.settings.segments;
+		const mirrors = this.mirrors();
 		for (const s of this.strokes) {
 			if (s.len < 2) continue;
 			const fade = this.fadeOf(s);
 			if (fade < .02) continue;
 			const mid = Math.max(0, (s.len >> 1) - 1);
-			const color = colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue, this.time, s.xs[mid] ?? 0, s.ys[mid] ?? 0, this.radius);
+			const color = colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue, this.lightTime, s.xs[mid] ?? 0, s.ys[mid] ?? 0, this.radius);
 			for (let i = 0; i < n; i++) {
 				const ca = this.cos[i] ?? 1;
 				const sa = this.sin[i] ?? 0;
 				this.drawPolyline(ctx, s, ca, sa, false, color, fade);
-				this.drawPolyline(ctx, s, ca, sa, true, color, fade);
+				if (mirrors) this.drawPolyline(ctx, s, ca, sa, true, color, fade);
 			}
 		}
 		ctx.restore();
@@ -1655,6 +2122,7 @@ var KaleidoEngine = class {
 			const pinned = id === pinnedId || id === "key";
 			this.appendPair(id, b.sx, b.sy, nx, ny, b.pressure, pinned);
 			this.feedEcho(id, nx, ny, b.pressure, pinned);
+			this.feedField(id, nx, ny, dt, b.pressure, pinned);
 			b.sx = nx;
 			b.sy = ny;
 		}
@@ -1709,17 +2177,20 @@ var KaleidoEngine = class {
 		this.lastTs = now;
 		if (this.flash > .01) this.flash = Math.max(0, this.flash - dt * 3.2);
 		if (this.settings.frozen) {
-			if (this.settings.spin && !this.reduced) this.spinAngle += .07 * dt;
 			this.present();
 			return;
 		}
-		this.time += dt;
+		this.inkTime += dt;
+		this.lightTime += dt;
+		this.aliveTime += dt;
 		this.cullStrokes();
 		if (this.settings.spin && !this.reduced) this.spinAngle += .07 * dt;
+		if (this.settings.pathMode === "field") this.rebuildField(this.lightTime);
 		const usingKeys = this.stepKeys(dt);
 		this.stepBrushes(dt);
 		this.stepPin(dt);
-		if (!this.anyPainting() && !usingKeys && !this.reduced && this.time >= this.resumeIdleAt) {
+		if (!this.reduced) this.stepIcons();
+		if (!this.settings.icon && !this.anyPainting() && !usingKeys && !this.reduced && this.inkTime >= this.resumeIdleAt) {
 			if (!this.hasIdle) {
 				const p = this.hypotrochoid(this.idleT);
 				this.lastIdleX = p.x;
@@ -1842,7 +2313,7 @@ function downloadBlob(blob, filename) {
 	a.remove();
 	URL.revokeObjectURL(url);
 }
-var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings, bottomInset, rimPad, menuOpen, onInteract, onFreeze, onMiddleClick, onWheel, onLayout, onPinChange }, ref) {
+var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings, bottomInset, rimPad, topInset, menuOpen, onInteract, onFreeze, onMiddleClick, onWheel, onLayout, onPinChange }, ref) {
 	const rootRef = (0, import_react.useRef)(null);
 	const canvasRef = (0, import_react.useRef)(null);
 	const engineRef = (0, import_react.useRef)(null);
@@ -1854,6 +2325,7 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 	const onPinRef = (0, import_react.useRef)(onPinChange);
 	const insetRef = (0, import_react.useRef)(bottomInset);
 	const rimRef = (0, import_react.useRef)(rimPad);
+	const topRef = (0, import_react.useRef)(topInset);
 	const pressRef = (0, import_react.useRef)(null);
 	const [failed, setFailed] = (0, import_react.useState)(false);
 	settingsRef.current = settings;
@@ -1863,6 +2335,7 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 	onPinRef.current = onPinChange;
 	insetRef.current = bottomInset;
 	rimRef.current = rimPad;
+	topRef.current = topInset;
 	(0, import_react.useImperativeHandle)(ref, () => ({
 		clear: () => engineRef.current?.clear(),
 		burst: () => engineRef.current?.burst(),
@@ -1870,6 +2343,7 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 		copyPng: () => engineRef.current?.copyPng() ?? Promise.resolve(false),
 		setBottomInset: (px) => engineRef.current?.setBottomInset(px),
 		setRimPad: (px) => engineRef.current?.setRimPad(px),
+		setTopInset: (px) => engineRef.current?.setTopInset(px),
 		startClip: (handlers, seconds) => {
 			const canvas = engineRef.current?.canvas();
 			if (!canvas || !canRecord()) return false;
@@ -1903,6 +2377,7 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 			engine.start();
 			engine.setBottomInset(insetRef.current);
 			engine.setRimPad(rimRef.current);
+			engine.setTopInset(topRef.current);
 		} catch {
 			setFailed(true);
 			return;
@@ -1919,7 +2394,12 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 	(0, import_react.useEffect)(() => {
 		engineRef.current?.setBottomInset(bottomInset);
 		engineRef.current?.setRimPad(rimPad);
-	}, [bottomInset, rimPad]);
+		engineRef.current?.setTopInset(topInset);
+	}, [
+		bottomInset,
+		rimPad,
+		topInset
+	]);
 	(0, import_react.useEffect)(() => {
 		engineRef.current?.setMenuOpen(menuOpen);
 	}, [menuOpen]);
@@ -1994,16 +2474,24 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 		})
 	});
 });
-function useWide() {
-	const [wide, setWide] = (0, import_react.useState)(false);
+function useChromeMode() {
+	const [flower, setFlower] = (0, import_react.useState)(() => {
+		if (typeof window === "undefined") return false;
+		return window.matchMedia("(min-width: 1024px)").matches && !window.matchMedia("(pointer: coarse)").matches;
+	});
 	(0, import_react.useEffect)(() => {
-		const mq = window.matchMedia("(min-width: 640px)");
-		const apply = () => setWide(mq.matches);
+		const wide = window.matchMedia("(min-width: 1024px)");
+		const coarse = window.matchMedia("(pointer: coarse)");
+		const apply = () => setFlower(wide.matches && !coarse.matches);
 		apply();
-		mq.addEventListener("change", apply);
-		return () => mq.removeEventListener("change", apply);
+		wide.addEventListener("change", apply);
+		coarse.addEventListener("change", apply);
+		return () => {
+			wide.removeEventListener("change", apply);
+			coarse.removeEventListener("change", apply);
+		};
 	}, []);
-	return wide;
+	return flower;
 }
 function KaleidoApp() {
 	const [settings, setSettings] = (0, import_react.useState)(DEFAULT_SETTINGS);
@@ -2014,6 +2502,7 @@ function KaleidoApp() {
 	const [tuneOpen, setTuneOpen] = (0, import_react.useState)(false);
 	const [dialOpen, setDialOpen] = (0, import_react.useState)(false);
 	const [helpOpen, setHelpOpen] = (0, import_react.useState)(false);
+	const [moreOpen, setMoreOpen] = (0, import_react.useState)(false);
 	const [hiddenChrome, setHiddenChrome] = (0, import_react.useState)(false);
 	const [pinned, setPinned] = (0, import_react.useState)(false);
 	const [clipState, setClipState] = (0, import_react.useState)("idle");
@@ -2027,30 +2516,80 @@ function KaleidoApp() {
 	});
 	const [chromeH, setChromeH] = (0, import_react.useState)(76);
 	const [focusId, setFocusId] = (0, import_react.useState)("freeze");
+	const [macros, setMacros] = (0, import_react.useState)(emptyMacros);
+	const [macroSlot, setMacroSlot] = (0, import_react.useState)(null);
+	const [notice, setNotice] = (0, import_react.useState)(null);
 	const stageRef = (0, import_react.useRef)(null);
+	const noticeTimer = (0, import_react.useRef)(0);
 	const burstOnce = (0, import_react.useRef)(false);
-	const wide = useWide();
+	const flower = useChromeMode();
 	(0, import_react.useEffect)(() => {
 		setSettings(loadSettings());
+		setMacros(loadMacros());
 		setReady(true);
 		setRecordEnabled(canRecord());
 	}, []);
-	const bottomInset = hiddenChrome ? 0 : Math.max(chromeH, tuneOpen ? 312 : dialOpen && !wide ? 228 : 76);
-	const rimPad = !hiddenChrome && dialOpen && !tuneOpen && wide ? 88 : 0;
+	const bottomInset = hiddenChrome ? 0 : Math.max(chromeH, tuneOpen ? 280 : dialOpen && !flower ? 228 : 76);
+	const rimPad = !hiddenChrome && dialOpen && !tuneOpen && flower ? 64 : 0;
 	(0, import_react.useEffect)(() => {
 		if (!ready) return;
 		saveSettings(settings);
 	}, [ready, settings]);
+	const flash = (0, import_react.useCallback)((msg) => {
+		setNotice(msg);
+		window.clearTimeout(noticeTimer.current);
+		noticeTimer.current = window.setTimeout(() => setNotice(null), 1500);
+	}, []);
+	const writeMacros = (0, import_react.useCallback)((bank) => {
+		setMacros(bank);
+		saveMacros(bank);
+	}, []);
 	const patch = (0, import_react.useCallback)((next) => {
 		setSettings((prev) => ({
 			...prev,
 			...next
 		}));
 	}, []);
+	const saveMacroSlot = (0, import_react.useCallback)((slot, settingsNow) => {
+		const next = {
+			...macros,
+			[slot]: lookFrom(settingsNow)
+		};
+		writeMacros(next);
+		setMacroSlot(slot);
+		flash(`Slot ${slot} saved`);
+	}, [
+		flash,
+		macros,
+		writeMacros
+	]);
+	const recallMacroSlot = (0, import_react.useCallback)((slot) => {
+		setSettings((prev) => {
+			const stored = macros[slot];
+			if (!stored) {
+				const next = {
+					...macros,
+					[slot]: lookFrom(prev)
+				};
+				writeMacros(next);
+				setMacroSlot(slot);
+				flash(`Save ${slot}`);
+				return prev;
+			}
+			setMacroSlot(slot);
+			flash(`Slot ${slot}`);
+			return applyLook(stored, prev.frozen);
+		});
+	}, [
+		flash,
+		macros,
+		writeMacros
+	]);
 	const closeMenus = (0, import_react.useCallback)(() => {
 		setDialOpen(false);
 		setTuneOpen(false);
 		setHelpOpen(false);
+		setMoreOpen(false);
 	}, []);
 	const onRandomize = (0, import_react.useCallback)(() => {
 		burstOnce.current = true;
@@ -2123,6 +2662,12 @@ function KaleidoApp() {
 			persist: cyclePersist(prev.persist)
 		}));
 	}, []);
+	const onTogglePark = (0, import_react.useCallback)(() => {
+		setSettings((prev) => ({
+			...prev,
+			persist: togglePark(prev.persist)
+		}));
+	}, []);
 	const onCycleLight = (0, import_react.useCallback)(() => {
 		setSettings((prev) => ({
 			...prev,
@@ -2143,6 +2688,7 @@ function KaleidoApp() {
 		setHiddenChrome(false);
 		setTuneOpen(false);
 		setHelpOpen(false);
+		setMoreOpen(false);
 		setDialOpen(true);
 	}, []);
 	const activateFocus = (0, import_react.useCallback)((id) => {
@@ -2161,7 +2707,7 @@ function KaleidoApp() {
 				onRandomize();
 				break;
 			case "trail":
-				onCyclePersist();
+				onTogglePark();
 				break;
 			case "pin":
 				onTogglePin();
@@ -2185,9 +2731,9 @@ function KaleidoApp() {
 		cyclePath,
 		onCycleColor,
 		onCycleLight,
-		onCyclePersist,
 		onRandomize,
 		onRecord,
+		onTogglePark,
 		onTogglePin
 	]);
 	(0, import_react.useEffect)(() => {
@@ -2260,6 +2806,7 @@ function KaleidoApp() {
 				setDialOpen(true);
 				setTuneOpen(true);
 				setHelpOpen(true);
+				setMoreOpen(true);
 				return;
 			}
 			if (e.key === "t" || e.key === "T") {
@@ -2280,14 +2827,14 @@ function KaleidoApp() {
 			if (e.key === "[") {
 				setSettings((prev) => ({
 					...prev,
-					segments: clamp(prev.segments - 1, 3, 16)
+					segments: clampSegments(prev.segments - 1)
 				}));
 				return;
 			}
 			if (e.key === "]") {
 				setSettings((prev) => ({
 					...prev,
-					segments: clamp(prev.segments + 1, 3, 16)
+					segments: clampSegments(prev.segments + 1)
 				}));
 				return;
 			}
@@ -2338,13 +2885,26 @@ function KaleidoApp() {
 				cyclePath();
 				return;
 			}
-			const digit = e.code.match(/^Digit([1-6])$/);
+			const digit = e.code.match(/^(?:Digit|Numpad)([0-9])$/);
 			if (digit) {
-				const mode = COLOR_MODES[Number(digit[1]) - 1];
-				if (mode) setSettings((prev) => ({
-					...prev,
-					colorMode: mode.id
-				}));
+				e.preventDefault();
+				const n = digit[1];
+				if (n === "1" || n === "0") {
+					if (e.shiftKey) setSettings((prev) => {
+						saveMacroSlot(n, prev);
+						return prev;
+					});
+					else recallMacroSlot(n);
+					return;
+				}
+				const folds = Number(n);
+				if (folds >= 2 && folds <= 9) {
+					setSettings((prev) => ({
+						...prev,
+						segments: folds
+					}));
+					flash(`${folds} folds`);
+				}
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -2355,6 +2915,7 @@ function KaleidoApp() {
 		cyclePath,
 		dialOpen,
 		focusId,
+		flash,
 		hiddenChrome,
 		onClear,
 		onCyclePersist,
@@ -2363,9 +2924,12 @@ function KaleidoApp() {
 		onRecord,
 		onTogglePin,
 		openDial,
+		recallMacroSlot,
+		saveMacroSlot,
 		tuneOpen
 	]);
-	const status = clipState === "recording" ? `Recording ${Math.max(0, clipMax - clipElapsed).toFixed(0)}s` : clipState === "unsupported" ? "Recording isn’t available here" : copied ? "Copied" : settings.frozen ? "Frozen" : pinned ? "Pin parked" : settings.pathMode !== "solo" ? settings.pathMode === "twin" ? "Twin brush" : settings.pathMode === "orbit" ? "Orbit" : "Echo" : null;
+	const pathLabel = settings.pathMode === "twin" ? "Twin brush" : settings.pathMode === "orbit" ? "Orbit" : settings.pathMode === "echo" ? "Echo" : settings.pathMode === "rosette" ? "Rosette" : settings.pathMode === "field" ? "Field" : null;
+	const status = notice ?? (clipState === "recording" ? `Recording ${Math.max(0, clipMax - clipElapsed).toFixed(0)}s` : clipState === "unsupported" ? "Recording isn’t available here" : copied ? "Copied" : settings.frozen ? "Frozen" : pinned ? "Pin parked" : macroSlot ? macros[macroSlot] ? `Slot ${macroSlot}` : `Save ${macroSlot}` : pathLabel);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
 		className: "relative h-screen h-dvh w-full select-none overflow-hidden bg-bg text-fg",
 		children: [
@@ -2374,6 +2938,7 @@ function KaleidoApp() {
 				settings,
 				bottomInset,
 				rimPad,
+				topInset: hiddenChrome ? 48 : 0,
 				menuOpen: dialOpen || tuneOpen,
 				onInteract: () => {
 					setHint(false);
@@ -2396,7 +2961,7 @@ function KaleidoApp() {
 				onLayout: setLens,
 				onPinChange: setPinned
 			}),
-			!hiddenChrome ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
+			!hiddenChrome && !tuneOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 				className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
 					className: "font-display text-3xl leading-tight tracking-[-0.03em] text-fg sm:text-4xl",
@@ -2405,15 +2970,18 @@ function KaleidoApp() {
 					className: cn("mt-1 max-w-xs text-sm text-muted transition-opacity duration-300 ease-out sm:max-w-md", hint ? "opacity-100" : "opacity-0"),
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "sm:hidden",
-						children: "Tap the aperture. Two fingers paint. Trail sets how fast lines fade."
+						children: "Tap the aperture. Two fingers paint. Decay sets how fast lines fade."
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "hidden sm:inline",
-						children: "Paint · Space opens the dial · Arrows choose · Enter locks · F freeze"
+						children: "Paint · 2–9 folds · 1 and 0 macros · Space opens the dial"
 					})]
 				})] }), status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 					className: "rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]",
 					children: status
 				}) : null]
+			}) : status && !hiddenChrome ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				className: "pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]",
+				children: status
 			}) : null,
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(KaleidoControls, {
 				settings,
@@ -2425,12 +2993,15 @@ function KaleidoApp() {
 				tuneOpen,
 				dialOpen,
 				helpOpen,
+				moreOpen,
 				recordEnabled,
 				pinned,
 				hiddenChrome,
-				wide,
+				flower,
 				lens,
 				focusId,
+				macros,
+				macroSlot,
 				onChange: patch,
 				onRandomize,
 				onClear,
@@ -2449,19 +3020,23 @@ function KaleidoApp() {
 						if (open) {
 							setTuneOpen(false);
 							setHelpOpen(false);
+							setMoreOpen(false);
 						}
 						return !open;
 					});
 				},
 				onTogglePin,
 				onToggleHelp: () => setHelpOpen((open) => !open),
+				onToggleMore: () => setMoreOpen((open) => !open),
 				onHideChrome: () => {
 					closeMenus();
 					setHiddenChrome((hidden) => !hidden);
 				},
 				onCloseMenus: closeMenus,
-				onCyclePersist,
+				onTogglePark,
 				onCycleLight,
+				onRecallMacro: recallMacroSlot,
+				onSaveMacro: (slot) => saveMacroSlot(slot, settings),
 				onChromeHeight: setChromeH,
 				onFocusId: setFocusId
 			})

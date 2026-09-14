@@ -1,11 +1,12 @@
+import { ICON_BURN, ICON_N, iconStep, type IconCoeffs } from "./icon";
 import type { ColorMode, ColorMotion, KaleidoSettings, LensLayout, LightActivity } from "./types";
 
 const BG = "rgb(8, 8, 11)";
 const TAU = Math.PI * 2;
 const ARROWS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 const WASD = new Set(["KeyA", "KeyD", "KeyW", "KeyS"]);
-const MAX_STROKES = 90;
 const MAX_PTS = 72;
+const FIELD_N = 24;
 
 type RGBA = { h: number; s: number; l: number; a: number };
 
@@ -27,6 +28,8 @@ type Stroke = {
   seed: number;
   width: number;
 };
+
+type IconPt = { x: number; y: number; px: number; py: number; qx: number; qy: number; seed: number };
 
 function colorAt(
   mode: ColorMode,
@@ -57,34 +60,35 @@ function colorAt(
   }
 }
 
-function activityAt(kind: LightActivity, time: number, along: number, seed: number) {
+function activityAt(kind: LightActivity, time: number, along: number, seed: number, boost: number) {
+  const lift = 1 + 0.55 * boost;
   switch (kind) {
     case "steady":
-      return { a: 0.78 + 0.1 * Math.sin(time * 1.6 + seed), h: 0, w: 1 };
+      return { a: (0.78 + 0.1 * Math.sin(time * 1.6 + seed)) * lift, h: 0, w: 1 };
     case "pulse": {
       const wave = 0.5 + 0.5 * Math.sin(time * 2.8 + seed);
-      return { a: 0.22 + 0.78 * wave, h: 0, w: 0.82 + 0.28 * wave };
+      return { a: (0.22 + 0.78 * wave) * lift, h: 0, w: 0.82 + 0.28 * wave + 0.2 * boost };
     }
     case "blink": {
       const beat = (time * 2.15 + seed * 0.15) % 1.15;
       const on = beat < 0.62 || (beat > 0.74 && beat < 0.88);
-      return { a: on ? 0.95 : 0.05, h: 0, w: on ? 1 : 0.7 };
+      return { a: (on ? 0.95 : 0.05) * lift, h: 0, w: on ? 1 : 0.7 };
     }
     case "chase": {
       const head = (time * 0.62 + seed) % 1;
       const d = Math.abs(along - head);
       const prox = Math.min(d, 1 - d);
       const hot = prox < 0.1;
-      return { a: hot ? 1 : 0.1 + 0.16 * (1 - prox), h: along * 50, w: hot ? 1.45 : 0.7 };
+      return { a: (hot ? 1 : 0.1 + 0.16 * (1 - prox)) * lift, h: along * 50, w: hot ? 1.45 : 0.7 };
     }
     case "firefly": {
       const tw = Math.sin(time * 6.8 + along * 22 + seed * 11);
       const lit = tw > 0.42;
-      return { a: lit ? 0.2 + (tw - 0.42) * 1.6 : 0.08, h: lit ? 24 : 0, w: lit ? 1.25 : 0.72 };
+      return { a: (lit ? 0.2 + (tw - 0.42) * 1.6 : 0.08) * lift, h: lit ? 24 : 0, w: lit ? 1.25 : 0.72 };
     }
     case "strobe": {
       const on = Math.sin(time * 16 + seed * 4) > 0.15;
-      return { a: on ? 1 : 0.04, h: on ? 10 : 0, w: on ? 1.12 : 0.75 };
+      return { a: (on ? 1 : 0.04) * lift, h: on ? 10 : 0, w: on ? 1.12 : 0.75 };
     }
   }
 }
@@ -106,6 +110,10 @@ function hsla(c: RGBA, a: number) {
   return `hsla(${((c.h % 360) + 360) % 360}, ${c.s}%, ${c.l}%, ${Math.max(0, Math.min(1, a))})`;
 }
 
+function isCoarse() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
+
 export class KaleidoEngine {
   private display: HTMLCanvasElement;
   private root: HTMLElement;
@@ -117,9 +125,12 @@ export class KaleidoEngine {
   private cy = 0;
   private radius = 0;
   private bottomInset = 0;
+  private topInset = 0;
   private rimPad = 0;
   private settings: KaleidoSettings;
-  private time = 0;
+  private inkTime = 0;
+  private lightTime = 0;
+  private aliveTime = 0;
   private spinAngle = 0;
   private raf = 0;
   private lastTs = 0;
@@ -129,6 +140,8 @@ export class KaleidoEngine {
   private sin = new Float64Array(8);
   private brushes = new Map<string, Brush>();
   private echoes = new Map<string, { x: number; y: number; t: number }[]>();
+  private fieldEcho = new Map<string, { x: number; y: number }>();
+  private field = new Float32Array(FIELD_N * FIELD_N);
   private keys = new Set<string>();
   private keyX = 0;
   private keyY = 0;
@@ -157,9 +170,11 @@ export class KaleidoEngine {
   private strokes: Stroke[] = [];
   private live = new Map<string, Stroke>();
   private menuOpen = false;
+  private icons: IconPt[] = [];
+  private iconK = 0;
 
   constructor(display: HTMLCanvasElement, root: HTMLElement, settings: KaleidoSettings) {
-    const dctx = display.getContext("2d", { alpha: false });
+    const dctx = display.getContext("2d", { alpha: false, colorSpace: "srgb" } as CanvasRenderingContext2DSettings);
     if (!dctx) throw new Error("Canvas 2D is not available");
     this.display = display;
     this.root = root;
@@ -167,7 +182,9 @@ export class KaleidoEngine {
     this.settings = { ...settings };
     this.rebuildTrig();
     this.reseedIdle();
+    this.rebuildField(0);
     this.reduced = prefersReducedMotion();
+    this.expose();
   }
 
   start() {
@@ -191,11 +208,14 @@ export class KaleidoEngine {
 
   setSettings(next: KaleidoSettings) {
     const segsChanged = next.segments !== this.settings.segments;
+    const iconChanged = next.icon !== this.settings.icon;
     const froze = next.frozen && !this.settings.frozen;
     this.settings = { ...next };
     if (segsChanged) this.rebuildTrig();
     if (next.frozen) this.brushes.clear();
     if (froze) this.pulse();
+    if ((iconChanged || segsChanged) && next.icon) this.seedIcons(next.icon, next.segments);
+    if (!next.icon) this.icons = [];
     this.present();
   }
 
@@ -215,6 +235,12 @@ export class KaleidoEngine {
   setRimPad(cssPx: number) {
     if (Math.abs(cssPx - this.rimPad) < 0.5) return;
     this.rimPad = cssPx;
+    this.layout(true);
+  }
+
+  setTopInset(cssPx: number) {
+    if (Math.abs(cssPx - this.topInset) < 0.5) return;
+    this.topInset = cssPx;
     this.layout(true);
   }
 
@@ -240,6 +266,28 @@ export class KaleidoEngine {
 
   canvas() {
     return this.display;
+  }
+
+  private expose() {
+    const el = this.display as HTMLCanvasElement & {
+      __kaleido?: Record<string, unknown>;
+    };
+    el.__kaleido = {
+      clocks: () => ({
+        ink: this.inkTime,
+        light: this.lightTime,
+        spin: this.spinAngle,
+        k: this.iconK,
+        alive: this.aliveTime,
+        frozen: this.settings.frozen,
+        persist: this.settings.persist,
+        path: this.settings.pathMode,
+        n: this.settings.segments,
+        kind: this.settings.iconKind,
+        strokeN: this.strokes.length,
+        layout: this.getLayout(),
+      }),
+    };
   }
 
   pinned() {
@@ -276,9 +324,11 @@ export class KaleidoEngine {
   clear() {
     this.strokes = [];
     this.live.clear();
+    this.icons = [];
     this.hasIdle = false;
     this.brushes.clear();
     this.echoes.clear();
+    this.fieldEcho.clear();
     this.unpin();
     this.resumeIdleAt = Number.POSITIVE_INFINITY;
     this.present();
@@ -286,6 +336,12 @@ export class KaleidoEngine {
 
   burst(seed = false) {
     this.reseedIdle();
+    if (this.settings.icon) {
+      this.seedIcons(this.settings.icon, this.settings.segments);
+      this.resumeIdleAt = this.inkTime;
+      this.present();
+      return;
+    }
     const steps = seed ? 220 : 160;
     const t0 = Math.random() * TAU;
     const dt = 0.05 + Math.random() * 0.014;
@@ -304,7 +360,7 @@ export class KaleidoEngine {
     this.lastIdleY = prevY;
     this.hasIdle = true;
     this.idleT = t0 + steps * dt;
-    this.resumeIdleAt = this.time;
+    this.resumeIdleAt = this.inkTime;
     this.present();
   }
 
@@ -344,6 +400,17 @@ export class KaleidoEngine {
     } catch {
       return false;
     }
+  }
+
+  private strokeCap() {
+    return isCoarse() ? 40 : 64;
+  }
+
+  private strokeWeight() {
+    let w = 0;
+    const parked = this.parkedGlobal();
+    for (const s of this.strokes) w += parked || s.pinned ? 2 : 1;
+    return w;
   }
 
   private bind() {
@@ -588,7 +655,8 @@ export class KaleidoEngine {
   private releaseBrush(id: string) {
     this.brushes.delete(id);
     this.echoes.delete(id);
-    for (const key of [`${id}:main`, `${id}:twin`, `${id}:orbit`, `${id}:echo`]) {
+    this.fieldEcho.delete(id);
+    for (const key of [`${id}:main`, `${id}:twin`, `${id}:orbit`, `${id}:echo`, `${id}:field`]) {
       this.live.delete(key);
     }
   }
@@ -625,11 +693,73 @@ export class KaleidoEngine {
     };
   }
 
+  private rebuildField(t: number) {
+    const bx = this.lastPX / Math.max(1, this.radius);
+    const by = this.lastPY / Math.max(1, this.radius);
+    for (let j = 0; j < FIELD_N; j++) {
+      for (let i = 0; i < FIELD_N; i++) {
+        const u = i / FIELD_N - 0.5;
+        const v = j / FIELD_N - 0.5;
+        this.field[j * FIELD_N + i] = Math.atan2(
+          Math.sin((u + 0.15) * 6 + t * 0.18) + v * 1.4 + by * 0.35,
+          Math.cos((v - 0.1) * 6 - t * 0.14) - u * 1.4 + bx * 0.35,
+        );
+      }
+    }
+  }
+
+  private fieldAngle(x: number, y: number) {
+    const n = FIELD_N;
+    const gx = ((x / Math.max(1, this.radius) + 1) * 0.5) * (n - 1);
+    const gy = ((y / Math.max(1, this.radius) + 1) * 0.5) * (n - 1);
+    const i = Math.max(0, Math.min(n - 2, Math.floor(gx)));
+    const j = Math.max(0, Math.min(n - 2, Math.floor(gy)));
+    return this.field[j * n + i] ?? 0;
+  }
+
+  private seedIcons(c: IconCoeffs, n: number) {
+    const pts: IconPt[] = [];
+    for (let i = 0; i < ICON_N; i++) {
+      const ang = (i / ICON_N) * TAU;
+      const r = 0.08 + (i % 17) * 0.011;
+      let x = Math.cos(ang) * r;
+      let y = Math.sin(ang) * r;
+      for (let k = 0; k < ICON_BURN; k++) {
+        const next = iconStep(x, y, c, n);
+        x = next.x;
+        y = next.y;
+      }
+      pts.push({ x, y, px: x, py: y, qx: x, qy: y, seed: i * 0.137 });
+    }
+    this.icons = pts;
+    this.iconK = ICON_BURN;
+  }
+
+  private stepIcons() {
+    const c = this.settings.icon;
+    if (!c || this.icons.length === 0) return;
+    const n = this.settings.segments;
+    const ring = this.settings.iconKind === "ring";
+    const steps = ring ? 3 : 1;
+    for (const p of this.icons) {
+      p.qx = p.px;
+      p.qy = p.py;
+      p.px = p.x;
+      p.py = p.y;
+      for (let k = 0; k < steps; k++) {
+        const next = iconStep(p.x, p.y, c, n);
+        p.x = next.x;
+        p.y = next.y;
+      }
+    }
+    this.iconK += steps;
+  }
+
   private pickDpr() {
     const raw = window.devicePixelRatio || 1;
     const nav = navigator as Navigator & { deviceMemory?: number };
     if ((nav.deviceMemory ?? 8) <= 2 || (navigator.hardwareConcurrency || 4) <= 2) return 1;
-    if (window.matchMedia("(pointer: coarse)").matches) return Math.min(1.5, raw);
+    if (isCoarse()) return Math.min(1.5, raw);
     return Math.min(2, raw);
   }
 
@@ -648,12 +778,13 @@ export class KaleidoEngine {
     this.height = h;
     this.display.width = w;
     this.display.height = h;
+    const top = this.topInset * dpr;
     const bottom = this.bottomInset * dpr;
     const pad = this.rimPad * dpr;
-    const usableH = Math.max(1, h - bottom);
+    const usableH = Math.max(1, h - bottom - top);
     this.cx = w / 2;
-    this.cy = usableH / 2;
-    this.radius = Math.max(24, Math.min(this.cx, this.cy) - 16 * dpr - pad);
+    this.cy = top + usableH / 2;
+    this.radius = Math.max(24, Math.min(this.cx, usableH / 2) - 16 * dpr - pad);
     if (!Number.isFinite(this.radius) || this.radius < 24) this.radius = 24;
 
     this.reseedIdle();
@@ -671,7 +802,8 @@ export class KaleidoEngine {
   }
 
   private allocStroke(pinned: boolean, width: number) {
-    while (this.strokes.length >= MAX_STROKES) {
+    const cap = this.strokeCap();
+    while (this.strokeWeight() >= cap) {
       const idx = this.strokes.findIndex((s) => !s.pinned);
       this.strokes.splice(idx === -1 ? 0 : idx, 1);
     }
@@ -679,7 +811,7 @@ export class KaleidoEngine {
       xs: new Float32Array(MAX_PTS),
       ys: new Float32Array(MAX_PTS),
       len: 0,
-      born: this.time,
+      born: this.inkTime,
       pinned,
       seed: Math.random() * TAU,
       width: Math.max(0.7, width),
@@ -731,7 +863,7 @@ export class KaleidoEngine {
       if (twin.len === 0) this.pushPoint(twin, -x0, -y0);
       this.strokeTo(twin, -x0, -y0, -x1, -y1);
     } else if (mode === "orbit") {
-      const a = this.time * 1.25;
+      const a = this.lightTime * 1.25;
       const c = Math.cos(a);
       const s = Math.sin(a);
       const ox0 = x0 * c - y0 * s;
@@ -751,17 +883,47 @@ export class KaleidoEngine {
       buf = [];
       this.echoes.set(id, buf);
     }
-    buf.push({ x, y, t: this.time });
-    const horizon = this.time - 0.55;
+    buf.push({ x, y, t: this.inkTime });
+    const horizon = this.inkTime - 0.28;
     while (buf.length > 2 && (buf[1]?.t ?? 0) < horizon) buf.shift();
     const ghost = buf[0];
-    if (ghost && this.time - ghost.t >= 0.45) {
+    if (ghost && this.inkTime - ghost.t >= 0.18) {
       const next = buf[1] ?? ghost;
       const width = this.settings.brush * (0.4 + 0.3 * pressure);
       const s = this.liveStroke(`${id}:echo`, pinned, width);
       if (s.len === 0) this.pushPoint(s, ghost.x, ghost.y);
       this.strokeTo(s, ghost.x, ghost.y, next.x, next.y);
     }
+  }
+
+  private feedField(id: string, x: number, y: number, dt: number, pressure: number, pinned: boolean) {
+    if (this.settings.pathMode !== "field") return;
+    let buf = this.echoes.get(id);
+    if (!buf) {
+      buf = [];
+      this.echoes.set(id, buf);
+    }
+    buf.push({ x, y, t: this.inkTime });
+    const horizon = this.inkTime - 0.28;
+    while (buf.length > 2 && (buf[1]?.t ?? 0) < horizon) buf.shift();
+    const ghost = buf[0];
+    if (!ghost || this.inkTime - ghost.t < 0.18) return;
+
+    let p = this.fieldEcho.get(id);
+    if (!p) {
+      p = { x: ghost.x, y: ghost.y };
+      this.fieldEcho.set(id, p);
+    }
+    const ang = this.fieldAngle(p.x, p.y);
+    const step = 0.012 * this.radius * Math.min(2.2, dt * 60);
+    const nx = p.x + Math.cos(ang) * step + (ghost.x - p.x) * 0.04;
+    const ny = p.y + Math.sin(ang) * step + (ghost.y - p.y) * 0.04;
+    const width = this.settings.brush * (0.38 + 0.28 * pressure);
+    const s = this.liveStroke(`${id}:field`, pinned, width);
+    if (s.len === 0) this.pushPoint(s, p.x, p.y);
+    this.strokeTo(s, p.x, p.y, nx, ny);
+    p.x = nx;
+    p.y = ny;
   }
 
   private cullStrokes() {
@@ -771,14 +933,14 @@ export class KaleidoEngine {
     this.strokes = this.strokes.filter((s) => {
       if (s.pinned && pinOn) return true;
       if (s.pinned && !pinOn) s.pinned = false;
-      return this.time - s.born < life;
+      return this.inkTime - s.born < life;
     });
   }
 
   private fadeOf(s: Stroke) {
     if (this.parkedGlobal() || (s.pinned && this.pin !== null)) return 1;
     const life = this.lifetime();
-    const age = this.time - s.born;
+    const age = this.inkTime - s.born;
     const t = Math.max(0, 1 - age / life);
     return t * t;
   }
@@ -786,6 +948,15 @@ export class KaleidoEngine {
   private needsAlong() {
     const a = this.settings.lightActivity;
     return a === "chase" || a === "firefly";
+  }
+
+  private idleBoost() {
+    if (this.reduced) return 0;
+    return Math.max(0, 1 - this.aliveTime / 2);
+  }
+
+  private mirrors(): boolean {
+    return this.settings.pathMode !== "rosette";
   }
 
   private drawPolyline(
@@ -798,8 +969,9 @@ export class KaleidoEngine {
     fade: number,
   ) {
     const actKind = this.settings.lightActivity;
-    const w = Math.max(0.85, s.width * 0.32 * this.dpr);
+    const w = Math.max(0.7, s.width * 0.22 * this.dpr);
     const alongNeeded = this.needsAlong();
+    const boost = this.idleBoost();
 
     const tx = (x: number, y: number) => {
       if (mirror) return { x: x * ca + y * sa, y: x * sa - y * ca };
@@ -807,7 +979,7 @@ export class KaleidoEngine {
     };
 
     if (!alongNeeded) {
-      const act = activityAt(actKind, this.time, 0.5, s.seed);
+      const act = activityAt(actKind, this.lightTime, 0.5, s.seed, boost);
       if (act.a * fade < 0.02) return;
       ctx.beginPath();
       for (let i = 0; i < s.len; i++) {
@@ -826,7 +998,7 @@ export class KaleidoEngine {
 
     for (let i = 1; i < s.len; i++) {
       const along = i / Math.max(1, s.len - 1);
-      const act = activityAt(actKind, this.time, along, s.seed);
+      const act = activityAt(actKind, this.lightTime, along, s.seed, boost);
       if (act.a * fade < 0.03) continue;
       const a = tx(s.xs[i - 1] ?? 0, s.ys[i - 1] ?? 0);
       const b = tx(s.xs[i] ?? 0, s.ys[i] ?? 0);
@@ -837,6 +1009,44 @@ export class KaleidoEngine {
       ctx.lineWidth = w * act.w;
       ctx.stroke();
     }
+  }
+
+  private drawIcons(ctx: CanvasRenderingContext2D) {
+    if (this.icons.length === 0) return;
+    const scale = this.radius * 0.92;
+    const ring = this.settings.iconKind === "ring";
+    const boost = this.idleBoost();
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    for (const p of this.icons) {
+      const x = p.x * scale;
+      const y = p.y * scale;
+      const ang = Math.atan2(p.y - p.py, p.x - p.px);
+      const color = colorAt(
+        this.settings.colorMode,
+        this.settings.colorMotion,
+        this.settings.hue + (ang * 180) / Math.PI,
+        this.lightTime,
+        x,
+        y,
+        this.radius,
+      );
+      const act = activityAt(this.settings.lightActivity, this.lightTime, (p.seed % 1), p.seed, boost);
+      ctx.fillStyle = hsla(color, 0.72 * act.a);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0.7, 1.15 * this.dpr * act.w), 0, TAU);
+      ctx.fill();
+      if (ring) {
+        ctx.strokeStyle = hsla(color, 0.45 * act.a);
+        ctx.lineWidth = Math.max(0.6, 0.7 * this.dpr);
+        ctx.beginPath();
+        ctx.moveTo(p.qx * scale, p.qy * scale);
+        ctx.lineTo(p.px * scale, p.py * scale);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   private present() {
@@ -861,7 +1071,10 @@ export class KaleidoEngine {
     ctx.lineJoin = "round";
     ctx.globalCompositeOperation = "source-over";
 
+    this.drawIcons(ctx);
+
     const n = this.settings.segments;
+    const mirrors = this.mirrors();
     for (const s of this.strokes) {
       if (s.len < 2) continue;
       const fade = this.fadeOf(s);
@@ -871,7 +1084,7 @@ export class KaleidoEngine {
         this.settings.colorMode,
         this.settings.colorMotion,
         this.settings.hue,
-        this.time,
+        this.lightTime,
         s.xs[mid] ?? 0,
         s.ys[mid] ?? 0,
         this.radius,
@@ -880,7 +1093,7 @@ export class KaleidoEngine {
         const ca = this.cos[i] ?? 1;
         const sa = this.sin[i] ?? 0;
         this.drawPolyline(ctx, s, ca, sa, false, color, fade);
-        this.drawPolyline(ctx, s, ca, sa, true, color, fade);
+        if (mirrors) this.drawPolyline(ctx, s, ca, sa, true, color, fade);
       }
     }
     ctx.restore();
@@ -944,6 +1157,7 @@ export class KaleidoEngine {
       const pinned = id === pinnedId || id === "key";
       this.appendPair(id, b.sx, b.sy, nx, ny, b.pressure, pinned);
       this.feedEcho(id, nx, ny, b.pressure, pinned);
+      this.feedField(id, nx, ny, dt, b.pressure, pinned);
       b.sx = nx;
       b.sy = ny;
     }
@@ -1004,23 +1218,27 @@ export class KaleidoEngine {
     if (this.flash > 0.01) this.flash = Math.max(0, this.flash - dt * 3.2);
 
     if (this.settings.frozen) {
-      if (this.settings.spin && !this.reduced) this.spinAngle += 0.07 * dt;
       this.present();
       return;
     }
 
-    this.time += dt;
+    this.inkTime += dt;
+    this.lightTime += dt;
+    this.aliveTime += dt;
     this.cullStrokes();
 
     if (this.settings.spin && !this.reduced) {
       this.spinAngle += 0.07 * dt;
     }
 
+    if (this.settings.pathMode === "field") this.rebuildField(this.lightTime);
+
     const usingKeys = this.stepKeys(dt);
     this.stepBrushes(dt);
     this.stepPin(dt);
+    if (!this.reduced) this.stepIcons();
 
-    if (!this.anyPainting() && !usingKeys && !this.reduced && this.time >= this.resumeIdleAt) {
+    if (!this.settings.icon && !this.anyPainting() && !usingKeys && !this.reduced && this.inkTime >= this.resumeIdleAt) {
       if (!this.hasIdle) {
         const p = this.hypotrochoid(this.idleT);
         this.lastIdleX = p.x;
