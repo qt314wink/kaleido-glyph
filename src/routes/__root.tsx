@@ -13,7 +13,7 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "Paint luminous symmetric patterns. Move to draw, freeze a frame, export the image.",
+        content: "Paint luminous mirrored patterns. Adjust the trail, record a clip, freeze a frame, export an image.",
       },
       { name: "theme-color", content: "#08080b" },
     ],
