@@ -1,4 +1,5 @@
 import { ICON_BURN, ICON_N, iconStep, type IconCoeffs } from "./icon";
+import { KaleidoGL, hslToRgb, type GLFrame, type GLIcon, type GLStroke } from "./gl";
 import type { ColorMode, ColorMotion, KaleidoSettings, LensLayout, LightActivity } from "./types";
 
 const BG = "rgb(8, 8, 11)";
@@ -117,7 +118,8 @@ function isCoarse() {
 export class KaleidoEngine {
   private display: HTMLCanvasElement;
   private root: HTMLElement;
-  private dctx: CanvasRenderingContext2D;
+  private dctx: CanvasRenderingContext2D | null = null;
+  private gl: KaleidoGL | null = null;
   private dpr = 1;
   private width = 0;
   private height = 0;
@@ -174,11 +176,17 @@ export class KaleidoEngine {
   private iconK = 0;
 
   constructor(display: HTMLCanvasElement, root: HTMLElement, settings: KaleidoSettings) {
-    const dctx = display.getContext("2d", { alpha: false, colorSpace: "srgb" } as CanvasRenderingContext2DSettings);
-    if (!dctx) throw new Error("Canvas 2D is not available");
     this.display = display;
     this.root = root;
-    this.dctx = dctx;
+    this.gl = KaleidoGL.attach(display);
+    if (!this.gl) {
+      const dctx = display.getContext("2d", {
+        alpha: false,
+        colorSpace: "srgb",
+      } as CanvasRenderingContext2DSettings);
+      if (!dctx) throw new Error("Canvas 2D is not available");
+      this.dctx = dctx;
+    }
     this.settings = { ...settings };
     this.rebuildTrig();
     this.reseedIdle();
@@ -285,6 +293,7 @@ export class KaleidoEngine {
         n: this.settings.segments,
         kind: this.settings.iconKind,
         strokeN: this.strokes.length,
+        renderer: this.gl ? "gl" : "2d",
         layout: this.getLayout(),
       }),
     };
@@ -1050,7 +1059,99 @@ export class KaleidoEngine {
   }
 
   private present() {
+    if (this.gl) {
+      this.presentGL();
+      return;
+    }
+    this.presentCanvas();
+  }
+
+  private presentGL() {
+    const { width: w, height: h, cx, cy, radius } = this;
+    if (!w || !h || !Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius < 1) {
+      return;
+    }
+    const boost = this.idleBoost();
+    const scale = radius * 0.92;
+    const icons: GLIcon[] = this.icons.map((p) => {
+      const x = p.x * scale;
+      const y = p.y * scale;
+      const ang = Math.atan2(p.y - p.py, p.x - p.px);
+      const color = colorAt(
+        this.settings.colorMode,
+        this.settings.colorMotion,
+        this.settings.hue + (ang * 180) / Math.PI,
+        this.lightTime,
+        x,
+        y,
+        this.radius,
+      );
+      const act = activityAt(this.settings.lightActivity, this.lightTime, p.seed % 1, p.seed, boost);
+      return {
+        x,
+        y,
+        px: p.px * scale,
+        py: p.py * scale,
+        qx: p.qx * scale,
+        qy: p.qy * scale,
+        seed: p.seed,
+        rgb: hslToRgb(color.h, color.s, color.l),
+        alpha: 0.72 * act.a,
+        size: Math.max(1.2, 2.3 * this.dpr * act.w),
+      };
+    });
+    const strokes: GLStroke[] = [];
+    for (const s of this.strokes) {
+      if (s.len < 2) continue;
+      const fade = this.fadeOf(s);
+      if (fade < 0.02) continue;
+      const mid = Math.max(0, (s.len >> 1) - 1);
+      const color = colorAt(
+        this.settings.colorMode,
+        this.settings.colorMotion,
+        this.settings.hue,
+        this.lightTime,
+        s.xs[mid] ?? 0,
+        s.ys[mid] ?? 0,
+        this.radius,
+      );
+      strokes.push({
+        xs: s.xs,
+        ys: s.ys,
+        len: s.len,
+        width: s.width,
+        seed: s.seed,
+        fade,
+        rgb: hslToRgb(color.h, color.s, Math.min(78, color.l + 8)),
+      });
+    }
+    const showKey = this.keyInited && [...this.keys].some((code) => WASD.has(code) || ARROWS.has(code));
+    const frame: GLFrame = {
+      width: w,
+      height: h,
+      cx,
+      cy,
+      radius,
+      dpr: this.dpr,
+      spin: this.settings.spin ? this.spinAngle : 0,
+      n: this.settings.segments,
+      mirrors: this.mirrors(),
+      activity: this.settings.lightActivity,
+      lightTime: this.lightTime,
+      boost,
+      flash: this.flash,
+      pin: !showKey && this.pin && !this.settings.frozen ? this.pin : null,
+      key: showKey ? { x: this.keyX, y: this.keyY } : null,
+      strokes,
+      icons,
+      iconRing: this.settings.iconKind === "ring",
+    };
+    this.gl?.draw(frame);
+  }
+
+  private presentCanvas() {
     const ctx = this.dctx;
+    if (!ctx) return;
     const { width: w, height: h, cx, cy, radius } = this;
     if (!w || !h || !Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius < 1) {
       return;
