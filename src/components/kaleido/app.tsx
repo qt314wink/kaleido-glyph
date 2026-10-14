@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KaleidoControls } from "@/components/kaleido/controls";
 import { KaleidoStage, type KaleidoStageHandle } from "@/components/kaleido/stage";
-import { canRecord } from "@/lib/kaleido/recorder";
+import { canRecord, chooseClipFile, chooseSaveFile, clipFilename, saveClip, stampedName, videoExportMime, writeClipFile, type ClipFileHandle } from "@/lib/kaleido/recorder";
 import {
   DIAL_IDS,
   DEFAULT_SETTINGS,
@@ -67,10 +67,13 @@ export function KaleidoApp() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [hiddenChrome, setHiddenChrome] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const [clipState, setClipState] = useState<"idle" | "recording" | "saved" | "unsupported">("idle");
+  const [clipState, setClipState] = useState<"idle" | "recording" | "ready" | "unsupported">("idle");
   const [clipElapsed, setClipElapsed] = useState(0);
   const [clipMax, setClipMax] = useState<RecordSeconds>(RECORD_SECONDS);
   const [recordEnabled, setRecordEnabled] = useState(true);
+  const [heldClip, setHeldClip] = useState<{ blob: Blob; name: string } | null>(null);
+  const [exportKind, setExportKind] = useState<"gif" | "mp4" | null>(null);
+  const [exportLabel, setExportLabel] = useState<string | null>(null);
   const [lens, setLens] = useState<LensLayout>({ cx: 0, cy: 0, radius: 0 });
   const [chromeH, setChromeH] = useState(76);
   const [focusId, setFocusId] = useState<DialId>("freeze");
@@ -80,6 +83,12 @@ export function KaleidoApp() {
   const stageRef = useRef<KaleidoStageHandle>(null);
   const noticeTimer = useRef(0);
   const burstOnce = useRef(false);
+  const saveHandleRef = useRef<ClipFileHandle | null>(null);
+  const armingRef = useRef(false);
+  const savingRef = useRef(false);
+  const exportingRef = useRef(false);
+  const heldRef = useRef(heldClip);
+  heldRef.current = heldClip;
   const flower = useChromeMode();
 
   useEffect(() => {
@@ -91,8 +100,10 @@ export function KaleidoApp() {
 
   const bottomInset = hiddenChrome
     ? 0
-    : Math.max(chromeH, tuneOpen ? 280 : dialOpen && !flower ? 228 : 76);
-  const rimPad = !hiddenChrome && dialOpen && !tuneOpen && flower ? 64 : 0;
+    : Math.max(chromeH, tuneOpen ? 240 : dialOpen && !flower ? 228 : 76);
+  const flowerOpen = flower && dialOpen && !tuneOpen;
+  const rimPad = !hiddenChrome && flowerOpen ? 64 : 0;
+  const topInset = hiddenChrome ? 48 : flowerOpen ? 112 : 0;
 
   useEffect(() => {
     if (!ready) return;
@@ -189,7 +200,84 @@ export function KaleidoApp() {
     }
   }, [onExport]);
 
-  const onRecord = useCallback(() => {
+  const onExportLoop = useCallback(
+    async (kind: "gif" | "mp4") => {
+      if (exportingRef.current) return;
+      if (stageRef.current?.recording()) {
+        flash("Finish the clip first");
+        return;
+      }
+      const video = kind === "mp4" ? videoExportMime() : null;
+      const ext = kind === "gif" ? "gif" : (video?.ext ?? "webm");
+      const filename = stampedName("kaleido", ext);
+      exportingRef.current = true;
+      let destination: ClipFileHandle | "later" | "cancel" = "later";
+      try {
+        destination = await chooseSaveFile(filename, ext);
+      } catch {
+        destination = "later";
+      }
+      if (destination === "cancel" || stageRef.current?.recording()) {
+        exportingRef.current = false;
+        return;
+      }
+      setExportKind(kind);
+      setExportLabel(
+        kind === "gif" ? "Making a GIF…" : ext === "mp4" ? "Making an MP4…" : "Making a video…",
+      );
+      try {
+        const blob =
+          kind === "gif"
+            ? await stageRef.current?.exportGif()
+            : await stageRef.current?.exportMp4(video?.mime ?? "video/webm");
+        if (!blob || blob.size === 0) throw new Error("empty");
+        const name = blob.type.includes("mp4")
+          ? filename.replace(/\.\w+$/, ".mp4")
+          : blob.type.includes("gif")
+            ? filename.replace(/\.\w+$/, ".gif")
+            : filename.replace(/\.\w+$/, ".webm");
+        setHeldClip({ blob, name });
+        if (destination === "later") {
+          setClipState("ready");
+          return;
+        }
+        try {
+          await writeClipFile(destination, blob);
+          setClipState("idle");
+          flash("Saved");
+        } catch {
+          setClipState("ready");
+        }
+      } catch {
+        flash(kind === "gif" ? "Couldn’t make a GIF" : "Couldn’t make a video");
+        setClipState(heldRef.current ? "ready" : "idle");
+      } finally {
+        exportingRef.current = false;
+        setExportKind(null);
+        setExportLabel(null);
+      }
+    },
+    [flash],
+  );
+
+  const onDownloadClip = useCallback(async () => {
+    if (!heldClip || savingRef.current) return;
+    savingRef.current = true;
+    try {
+      const how = await saveClip(heldClip.blob, heldClip.name);
+      setClipState((state) => (state === "ready" ? "idle" : state));
+      flash(how === "shared" ? "Shared" : how === "saved" ? "Saved" : "Downloading");
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        setClipState((state) => (state === "recording" ? state : "ready"));
+      }
+    } finally {
+      savingRef.current = false;
+    }
+  }, [flash, heldClip]);
+
+  const onRecord = useCallback(async () => {
+    if (exportingRef.current) return;
     if (stageRef.current?.recording()) {
       stageRef.current.stopClip();
       return;
@@ -199,25 +287,53 @@ export function KaleidoApp() {
       window.setTimeout(() => setClipState("idle"), 1800);
       return;
     }
+    if (armingRef.current) return;
+    armingRef.current = true;
+    let destination: ClipFileHandle | "later" | "cancel" = "later";
+    try {
+      destination = await chooseClipFile();
+    } finally {
+      armingRef.current = false;
+    }
+    if (destination === "cancel" || stageRef.current?.recording()) return;
+    saveHandleRef.current = destination === "later" ? null : destination;
     setSettings((prev) => (prev.frozen ? { ...prev, frozen: false } : prev));
     setClipElapsed(0);
     const ok = stageRef.current?.startClip(
       {
         onTick: (elapsed) => setClipElapsed(elapsed),
         onStop: (blob) => {
-          setClipState(blob && blob.size > 0 ? "saved" : "idle");
           setClipElapsed(0);
-          window.setTimeout(() => setClipState("idle"), 1600);
+          const handle = saveHandleRef.current;
+          saveHandleRef.current = null;
+          if (!blob || blob.size === 0) {
+            setClipState("idle");
+            flash("Clip didn’t capture");
+            return;
+          }
+          const name = clipFilename(blob.type);
+          setHeldClip({ blob, name });
+          if (!handle) {
+            setClipState("ready");
+            return;
+          }
+          setClipState("idle");
+          flash("Saving…");
+          void writeClipFile(handle, blob).then(
+            () => flash("Saved"),
+            () => setClipState("ready"),
+          );
         },
       },
       clipMax,
     );
     if (ok) setClipState("recording");
     else {
+      saveHandleRef.current = null;
       setClipState("unsupported");
       window.setTimeout(() => setClipState("idle"), 1800);
     }
-  }, [recordEnabled, clipMax]);
+  }, [clipMax, flash, recordEnabled]);
 
   const cyclePath = useCallback(() => {
     setSettings((prev) => ({ ...prev, pathMode: cycleId(PATH_MODES, prev.pathMode) }));
@@ -262,7 +378,8 @@ export function KaleidoApp() {
           setSettings((prev) => ({ ...prev, frozen: !prev.frozen }));
           break;
         case "record":
-          onRecord();
+          if (clipState === "ready") void onDownloadClip();
+          else void onRecord();
           closeMenus();
           break;
         case "random":
@@ -290,7 +407,7 @@ export function KaleidoApp() {
           break;
       }
     },
-    [closeMenus, cyclePath, onCycleColor, onCycleLight, onRandomize, onRecord, onTogglePark, onTogglePin],
+    [closeMenus, clipState, cyclePath, onCycleColor, onCycleLight, onDownloadClip, onRandomize, onRecord, onTogglePark, onTogglePin],
   );
 
   useEffect(() => {
@@ -321,7 +438,8 @@ export function KaleidoApp() {
       }
       if (e.code === "KeyV") {
         e.preventDefault();
-        onRecord();
+        if (clipState === "ready") void onDownloadClip();
+        else void onRecord();
         return;
       }
       if (e.key === "r" || e.key === "R") {
@@ -455,6 +573,7 @@ export function KaleidoApp() {
   }, [
     activateFocus,
     closeMenus,
+    clipState,
     cyclePath,
     dialOpen,
     focusId,
@@ -462,6 +581,7 @@ export function KaleidoApp() {
     hiddenChrome,
     onClear,
     onCyclePersist,
+    onDownloadClip,
     onExport,
     onRandomize,
     onRecord,
@@ -486,24 +606,43 @@ export function KaleidoApp() {
               : null;
 
   const status =
+    exportLabel ??
     notice ??
     (clipState === "recording"
       ? `Recording ${Math.max(0, clipMax - clipElapsed).toFixed(0)}s`
-      : clipState === "unsupported"
-        ? "Recording isn’t available here"
-        : copied
-          ? "Copied"
-          : settings.frozen
-            ? "Frozen"
-            : pinned
-              ? "Pin parked"
-              : macroSlot
-                ? macros[macroSlot]
-                  ? `Slot ${macroSlot}`
-                  : `Save ${macroSlot}`
-                : pathLabel);
+      : clipState === "ready"
+        ? "Clip ready"
+        : clipState === "unsupported"
+          ? "Recording isn’t available here"
+          : copied
+            ? "Copied"
+            : settings.frozen
+              ? "Frozen"
+              : pinned
+                ? "Pin parked"
+                : macroSlot
+                  ? macros[macroSlot]
+                    ? `Slot ${macroSlot}`
+                    : `Save ${macroSlot}`
+                  : pathLabel);
 
   const showHeader = !hiddenChrome && !tuneOpen;
+  const downloadButton = clipState === "ready" && !exportKind && heldClip ? (
+    <button
+      type="button"
+      data-testid="btn-download-clip"
+      onClick={() => void onDownloadClip()}
+      className="pointer-events-auto rounded-full bg-fg px-3 py-1.5 text-xs font-medium text-bg"
+    >
+      {heldClip.name.endsWith(".gif")
+        ? "Download GIF"
+        : heldClip.name.endsWith(".mp4")
+          ? "Download MP4"
+          : heldClip.name.includes("-clip-")
+            ? "Download clip"
+            : "Download video"}
+    </button>
+  ) : null;
 
   return (
     <main className="relative h-screen h-dvh w-full select-none overflow-hidden bg-bg text-fg">
@@ -512,7 +651,7 @@ export function KaleidoApp() {
         settings={settings}
         bottomInset={bottomInset}
         rimPad={rimPad}
-        topInset={hiddenChrome ? 48 : 0}
+        topInset={topInset}
         menuOpen={dialOpen || tuneOpen}
         onInteract={() => {
           setHint(false);
@@ -551,16 +690,20 @@ export function KaleidoApp() {
               </span>
             </p>
           </div>
-          {status ? (
+          {downloadButton ?? (status ? (
             <span className="rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]">
               {status}
             </span>
-          ) : null}
+          ) : null)}
         </header>
-      ) : status && !hiddenChrome ? (
-        <span className="pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]">
-          {status}
-        </span>
+      ) : downloadButton || (status && !hiddenChrome) ? (
+        <div className="pointer-events-none absolute top-3 right-3 z-20">
+          {downloadButton ?? (
+            <span className="rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]">
+              {status}
+            </span>
+          )}
+        </div>
       ) : null}
 
       <KaleidoControls
@@ -568,6 +711,7 @@ export function KaleidoApp() {
         exported={exported}
         copied={copied}
         clipState={clipState}
+        clipHeld={heldClip !== null}
         clipElapsed={clipElapsed}
         clipMax={clipMax}
         tuneOpen={tuneOpen}
@@ -586,8 +730,12 @@ export function KaleidoApp() {
         onRandomize={onRandomize}
         onClear={onClear}
         onExport={() => void onExport()}
+        onExportGif={() => void onExportLoop("gif")}
+        onExportMp4={() => void onExportLoop("mp4")}
+        exportKind={exportKind}
         onCopy={() => void onCopy()}
         onRecord={onRecord}
+        onDownloadClip={() => void onDownloadClip()}
         onRecordSeconds={setClipMax}
         onToggleTune={() => {
           setHiddenChrome(false);

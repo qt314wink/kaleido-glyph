@@ -1,12 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { KaleidoEngine } from "@/lib/kaleido/engine";
-import { ClipRecorder, canRecord, downloadBlob, type ClipRecorderHandlers } from "@/lib/kaleido/recorder";
+import { LOOP_SECONDS, captureGif, captureVideo } from "@/lib/kaleido/gif";
+import { ClipRecorder, canRecord, type ClipRecorderHandlers } from "@/lib/kaleido/recorder";
 import type { KaleidoSettings, LensLayout, RecordSeconds } from "@/lib/kaleido/types";
 
 export type KaleidoStageHandle = {
   clear: () => void;
   burst: () => void;
   exportPng: () => Promise<void>;
+  exportGif: () => Promise<Blob>;
+  exportMp4: (mime: string) => Promise<Blob>;
   copyPng: () => Promise<boolean>;
   setBottomInset: (px: number) => void;
   setRimPad: (px: number) => void;
@@ -65,6 +68,18 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
       clear: () => engineRef.current?.clear(),
       burst: () => engineRef.current?.burst(),
       exportPng: () => engineRef.current?.exportPng() ?? Promise.resolve(),
+      exportGif: () => {
+        const engine = engineRef.current;
+        const canvas = engine?.canvas();
+        if (!engine || !canvas) return Promise.reject(new Error("Lens isn’t ready"));
+        return captureGif(canvas, () => engine.lensPixels());
+      },
+      exportMp4: (mime: string) => {
+        const engine = engineRef.current;
+        const canvas = engine?.canvas();
+        if (!engine || !canvas) return Promise.reject(new Error("Lens isn’t ready"));
+        return captureVideo(canvas, () => engine.lensPixels(), LOOP_SECONDS, mime);
+      },
       copyPng: () => engineRef.current?.copyPng() ?? Promise.resolve(false),
       setBottomInset: (px: number) => engineRef.current?.setBottomInset(px),
       setRimPad: (px: number) => engineRef.current?.setRimPad(px),
@@ -72,21 +87,7 @@ export const KaleidoStage = forwardRef<KaleidoStageHandle, StageProps>(
       startClip: (handlers, seconds) => {
         const canvas = engineRef.current?.canvas();
         if (!canvas || !canRecord()) return false;
-        return recorderRef.current.start(
-          canvas,
-          {
-            ...handlers,
-            onStop: (blob) => {
-              if (blob && blob.size > 0) {
-                const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-                const ext = blob.type.includes("mp4") ? "mp4" : "webm";
-                downloadBlob(blob, `kaleido-clip-${stamp}.${ext}`);
-              }
-              handlers.onStop?.(blob);
-            },
-          },
-          seconds,
-        );
+        return recorderRef.current.start(canvas, handlers, seconds);
       },
       stopClip: () => recorderRef.current.stop(),
       recording: () => recorderRef.current.active,

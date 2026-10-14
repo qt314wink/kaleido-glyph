@@ -1,4 +1,9 @@
-export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+export function hslToRgb(
+  h: number,
+  s: number,
+  l: number,
+  out?: [number, number, number],
+): [number, number, number] {
   const hh = ((h % 360) + 360) % 360;
   const ss = s / 100;
   const ll = l / 100;
@@ -7,7 +12,16 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
     const k = (n + hh / 30) % 12;
     return ll - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
   };
-  return [f(0), f(8), f(4)];
+  const r = f(0);
+  const g = f(8);
+  const b = f(4);
+  if (out) {
+    out[0] = r;
+    out[1] = g;
+    out[2] = b;
+    return out;
+  }
+  return [r, g, b];
 }
 
 const ACT: Record<string, number> = {
@@ -61,6 +75,7 @@ export type GLFrame = {
   strokes: GLStroke[];
   icons: GLIcon[];
   iconRing: boolean;
+  fill: { rgba: Uint8ClampedArray; size: number; rev: number } | null;
 };
 
 const STROKE_VS = `#version 300 es
@@ -237,6 +252,41 @@ void main() {
 }
 `;
 
+const FILL_VS = `#version 300 es
+layout(location=0) in vec2 a_pos;
+uniform vec2 u_view;
+uniform vec2 u_origin;
+uniform float u_spin;
+uniform float u_radius;
+out vec2 v_uv;
+out vec2 v_local;
+void main() {
+  vec2 p = a_pos * u_radius;
+  float ca = cos(u_spin);
+  float sa = sin(u_spin);
+  vec2 r = vec2(p.x * ca - p.y * sa, p.x * sa + p.y * ca);
+  v_local = r;
+  vec2 s = vec2(r.x + u_origin.x, r.y + u_origin.y);
+  gl_Position = vec4(s.x / u_view.x * 2.0 - 1.0, 1.0 - s.y / u_view.y * 2.0, 0.0, 1.0);
+  v_uv = a_pos * 0.5 + 0.5;
+}
+`;
+
+const FILL_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+in vec2 v_local;
+uniform sampler2D u_tex;
+uniform float u_radius;
+out vec4 frag;
+void main() {
+  if (length(v_local) > u_radius) discard;
+  vec4 c = texture(u_tex, v_uv);
+  if (c.a < 0.004) discard;
+  frag = c;
+}
+`;
+
 function compile(gl: WebGL2RenderingContext, vsSrc: string, fsSrc: string): WebGLProgram | null {
   const vs = gl.createShader(gl.VERTEX_SHADER);
   const fs = gl.createShader(gl.FRAGMENT_SHADER);
@@ -281,10 +331,12 @@ export function webgl2Available() {
     const p = compile(gl, STROKE_VS, STROKE_FS);
     const q = compile(gl, POINT_VS, POINT_FS);
     const o = compile(gl, OVERLAY_VS, OVERLAY_FS);
-    const ok = Boolean(p && q && o);
+    const f = compile(gl, FILL_VS, FILL_FS);
+    const ok = Boolean(p && q && o && f);
     if (p) gl.deleteProgram(p);
     if (q) gl.deleteProgram(q);
     if (o) gl.deleteProgram(o);
+    if (f) gl.deleteProgram(f);
     return ok;
   } catch {
     return false;
@@ -296,6 +348,10 @@ export class KaleidoGL {
   private strokeProg: WebGLProgram;
   private pointProg: WebGLProgram;
   private overlayProg: WebGLProgram;
+  private fillProg: WebGLProgram;
+  private fillTex: WebGLTexture;
+  private fillSize = 0;
+  private fillRev = -1;
   private strokeVao: WebGLVertexArrayObject;
   private strokeBuf: WebGLBuffer;
   private pointVao: WebGLVertexArrayObject;
@@ -306,19 +362,22 @@ export class KaleidoGL {
   private trailXs = new Float32Array(3);
   private trailYs = new Float32Array(3);
 
-  constructor(gl: WebGL2RenderingContext, programs: [WebGLProgram, WebGLProgram, WebGLProgram]) {
+  constructor(gl: WebGL2RenderingContext, programs: [WebGLProgram, WebGLProgram, WebGLProgram, WebGLProgram]) {
     this.gl = gl;
     this.strokeProg = programs[0];
     this.pointProg = programs[1];
     this.overlayProg = programs[2];
+    this.fillProg = programs[3];
     const strokeVao = gl.createVertexArray();
     const strokeBuf = gl.createBuffer();
     const pointVao = gl.createVertexArray();
     const pointBuf = gl.createBuffer();
     const overlayVao = gl.createVertexArray();
-    if (!strokeVao || !strokeBuf || !pointVao || !pointBuf || !overlayVao) {
+    const fillTex = gl.createTexture();
+    if (!strokeVao || !strokeBuf || !pointVao || !pointBuf || !overlayVao || !fillTex) {
       throw new Error("WebGL buffers failed");
     }
+    this.fillTex = fillTex;
     this.strokeVao = strokeVao;
     this.strokeBuf = strokeBuf;
     this.pointVao = pointVao;
@@ -383,9 +442,10 @@ export class KaleidoGL {
     const stroke = compile(gl, STROKE_VS, STROKE_FS);
     const point = compile(gl, POINT_VS, POINT_FS);
     const overlay = compile(gl, OVERLAY_VS, OVERLAY_FS);
-    if (!stroke || !point || !overlay) return null;
+    const fill = compile(gl, FILL_VS, FILL_FS);
+    if (!stroke || !point || !overlay || !fill) return null;
     try {
-      return new KaleidoGL(gl, [stroke, point, overlay]);
+      return new KaleidoGL(gl, [stroke, point, overlay, fill]);
     } catch {
       return null;
     }
@@ -407,9 +467,41 @@ export class KaleidoGL {
     const activity = ACT[frame.activity] ?? 1;
     const instances = frame.n * (frame.mirrors ? 2 : 1);
 
+    this.drawFill(frame, view, origin, spin);
     this.drawIcons(frame, view, origin, spin);
     this.drawStrokes(frame, view, origin, spin, activity, instances);
     this.drawOverlay(frame, view, origin);
+  }
+
+  private drawFill(frame: GLFrame, view: [number, number], origin: [number, number], spin: number) {
+    const fill = frame.fill;
+    if (!fill || fill.size < 2) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.fillTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    if (this.fillSize !== fill.size) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fill.size, fill.size, 0, gl.RGBA, gl.UNSIGNED_BYTE, fill.rgba);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.fillSize = fill.size;
+      this.fillRev = fill.rev;
+    } else if (this.fillRev !== fill.rev) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, fill.size, fill.size, gl.RGBA, gl.UNSIGNED_BYTE, fill.rgba);
+      this.fillRev = fill.rev;
+    }
+    const prog = this.fillProg;
+    gl.useProgram(prog);
+    gl.bindVertexArray(this.overlayVao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.fillTex);
+    gl.uniform1i(loc(gl, prog, "u_tex"), 0);
+    gl.uniform2f(loc(gl, prog, "u_view"), view[0], view[1]);
+    gl.uniform2f(loc(gl, prog, "u_origin"), origin[0], origin[1]);
+    gl.uniform1f(loc(gl, prog, "u_spin"), spin);
+    gl.uniform1f(loc(gl, prog, "u_radius"), frame.radius);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   private drawStrokes(

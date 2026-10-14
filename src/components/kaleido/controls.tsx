@@ -26,6 +26,8 @@ import { Slider } from "@/components/ui/slider";
 import {
   COLOR_MODES,
   COLOR_MOTIONS,
+  FILL_MODES,
+  FILL_RECIPES,
   LIGHT_ACTIVITIES,
   MACRO_SLOTS,
   PATH_MODES,
@@ -48,7 +50,8 @@ type ControlsProps = {
   settings: KaleidoSettings;
   exported: boolean;
   copied: boolean;
-  clipState: "idle" | "recording" | "saved" | "unsupported";
+  clipState: "idle" | "recording" | "ready" | "unsupported";
+  clipHeld: boolean;
   clipElapsed: number;
   clipMax: RecordSeconds;
   tuneOpen: boolean;
@@ -67,8 +70,12 @@ type ControlsProps = {
   onRandomize: () => void;
   onClear: () => void;
   onExport: () => void;
+  onExportGif: () => void;
+  onExportMp4: () => void;
+  exportKind: "gif" | "mp4" | null;
   onCopy: () => void;
   onRecord: () => void;
+  onDownloadClip: () => void;
   onRecordSeconds: (seconds: RecordSeconds) => void;
   onToggleTune: () => void;
   onToggleDial: () => void;
@@ -90,15 +97,18 @@ function Chip({
   children,
   onClick,
   hint,
+  testId,
 }: {
   active: boolean;
   children: ReactNode;
   onClick: () => void;
   hint?: string;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       title={hint}
       onClick={onClick}
       className={cn(
@@ -177,13 +187,51 @@ type Petal = {
   icon: ReactNode;
 };
 
-function downloadAsset(href: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+function placePetal(x: number, y: number, lens: LensLayout, hasLens: boolean) {
+  if (!hasLens || typeof window === "undefined") return { x, y };
+  const minY = 112;
+  const maxY = Math.max(minY + 8, window.innerHeight - 84);
+  const minX = 28;
+  const maxX = Math.max(minX + 8, window.innerWidth - 28);
+  const minDist = lens.radius + 36;
+  let dx = x - lens.cx;
+  let dy = y - lens.cy;
+  let dist = Math.hypot(dx, dy) || 1;
+  if (dist < minDist) {
+    dx = (dx / dist) * minDist;
+    dy = (dy / dist) * minDist;
+    dist = minDist;
+  }
+  let px = lens.cx + dx;
+  let py = lens.cy + dy;
+  px = Math.min(maxX, Math.max(minX, px));
+  py = Math.min(maxY, Math.max(minY, py));
+  dx = px - lens.cx;
+  dy = py - lens.cy;
+  dist = Math.hypot(dx, dy) || 1;
+  if (dist < minDist) {
+    const ox = lens.cx + (dx / dist) * minDist;
+    const oy = lens.cy + (dy / dist) * minDist;
+    if (ox >= minX && ox <= maxX && oy >= minY && oy <= maxY) return { x: ox, y: oy };
+  }
+  return { x: px, y: py };
+}
+
+function fillRelation(
+  settings: KaleidoSettings,
+) {
+  if (settings.fillMode === "off") return null;
+  const light = LIGHT_ACTIVITIES.find((mode) => mode.id === settings.lightActivity)?.label ?? "the light";
+  const mirror = settings.pathMode !== "rosette";
+  if (settings.fillMode === "cells") {
+    return settings.fillRecipe === "tide"
+      ? `Closed loops · rim stays empty · breathes with ${light}`
+      : "Closed loops · the rim stays empty";
+  }
+  const fold = mirror ? `${settings.segments} folds, mirrored` : `${settings.segments} folds, rotations only`;
+  if (settings.fillRecipe === "tide") return `${fold} · breathes with ${light}`;
+  if (settings.fillRecipe === "cloisonne") return `${fold} · one hue step per sector`;
+  return `${fold} · rays are the walls`;
 }
 
 export function KaleidoControls({
@@ -191,6 +239,7 @@ export function KaleidoControls({
   exported,
   copied,
   clipState,
+  clipHeld,
   clipElapsed,
   clipMax,
   tuneOpen,
@@ -209,8 +258,12 @@ export function KaleidoControls({
   onRandomize,
   onClear,
   onExport,
+  onExportGif,
+  onExportMp4,
+  exportKind,
   onCopy,
   onRecord,
+  onDownloadClip,
   onRecordSeconds,
   onToggleTune,
   onToggleDial,
@@ -261,11 +314,13 @@ export function KaleidoControls({
     },
     {
       id: "record",
-      label: recording ? `${remain.toFixed(0)}s left` : clipState === "saved" ? "Saved" : `Record ${clipMax}s`,
+      label: recording ? `${remain.toFixed(0)}s left` : clipState === "ready" ? "Download" : `Record ${clipMax}s`,
       testId: "btn-record",
-      active: recording,
-      onClick: onRecord,
-      icon: recording ? (
+      active: recording || clipState === "ready",
+      onClick: clipState === "ready" ? onDownloadClip : onRecord,
+      icon: clipState === "ready" ? (
+        <Download className="size-5" />
+      ) : recording ? (
         <Square className="size-4 fill-current" />
       ) : (
         <Circle className="size-4 fill-destructive text-destructive" />
@@ -342,7 +397,6 @@ export function KaleidoControls({
   const flower = showPetals && flowerChrome;
   const dock = showPetals && !flowerChrome;
   const hasLens = lens.radius > 40;
-  const petalR = hasLens ? lens.radius + 52 : 110;
 
   if (hiddenChrome) {
     return (
@@ -373,9 +427,16 @@ export function KaleidoControls({
         const span = 360 - gap;
         const startDeg = 90 + gap / 2;
         const deg = startDeg + ((i + 0.5) / petals.length) * span;
+        const orbit = hasLens ? lens.radius + 52 : 110;
         const ang = (deg * Math.PI) / 180;
-        const x = hasLens ? lens.cx + Math.cos(ang) * petalR : Math.cos(ang) * petalR;
-        const y = hasLens ? lens.cy + Math.sin(ang) * petalR : Math.sin(ang) * petalR;
+        const placed = placePetal(
+          hasLens ? lens.cx + Math.cos(ang) * orbit : Math.cos(ang) * orbit,
+          hasLens ? lens.cy + Math.sin(ang) * orbit : Math.sin(ang) * orbit,
+          lens,
+          hasLens,
+        );
+        const x = placed.x;
+        const y = placed.y;
         return (
           <button
             key={petal.id}
@@ -412,8 +473,8 @@ export function KaleidoControls({
         className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         {tuneOpen ? (
-          <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-surface p-4 shadow-[var(--shadow-border)]">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="pointer-events-auto flex max-h-[min(48dvh,26rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <p className="text-sm font-medium text-fg">Tune</p>
               <button
                 type="button"
@@ -425,13 +486,15 @@ export function KaleidoControls({
                 <X className="size-4" />
               </button>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="persist" className="w-16 shrink-0 text-xs font-medium text-muted">
+            <div className="overflow-y-auto px-4 pb-4">
+            <div className="flex items-center gap-2">
+              <label htmlFor="persist" className="w-14 shrink-0 text-xs font-medium text-muted">
                 Decay
               </label>
               <Slider
                 id="persist"
                 data-testid="slider-persist"
+                className="min-w-0 w-auto flex-1"
                 min={0}
                 max={100}
                 step={1}
@@ -439,17 +502,21 @@ export function KaleidoControls({
                 onValueChange={(value) => onChange({ persist: value[0] ?? 88 })}
                 aria-label="How long trails linger"
               />
-              <span className="w-12 text-right text-xs font-medium tabular-nums text-fg">
+              <span className="w-12 shrink-0 text-right text-xs font-medium tabular-nums text-fg">
                 {persistLabel(settings.persist)}
               </span>
+              <Chip active={parked} onClick={onTogglePark} hint="Hold the lines until decay moves">
+                Park
+              </Chip>
             </div>
-            <div className="mt-1 flex items-center gap-3">
-              <label htmlFor="segments" className="w-16 shrink-0 text-xs font-medium text-muted">
+            <div className="mt-2 flex items-center gap-2">
+              <label htmlFor="segments" className="w-14 shrink-0 text-xs font-medium text-muted">
                 Folds
               </label>
               <Slider
                 id="segments"
                 data-testid="slider-segments"
+                className="min-w-0 w-auto flex-1"
                 min={SEG_MIN}
                 max={SEG_MAX}
                 step={1}
@@ -457,14 +524,29 @@ export function KaleidoControls({
                 onValueChange={(value) => onChange({ segments: value[0] ?? 8 })}
                 aria-label="Segment count"
               />
-              <span className="w-8 text-right font-medium tabular-nums text-fg">{settings.segments}</span>
+              <span className="w-8 shrink-0 text-right font-medium tabular-nums text-fg">{settings.segments}</span>
             </div>
-            <div className="mt-1 flex items-center gap-3">
-              <label htmlFor="brush" className="w-16 shrink-0 text-xs font-medium text-muted">
+            <div className="mt-2 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Path">
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Path</span>
+              {PATH_MODES.map((mode) => (
+                <Chip
+                  key={mode.id}
+                  testId={`btn-path-${mode.id}`}
+                  hint={mode.hint}
+                  active={settings.pathMode === mode.id}
+                  onClick={() => onChange({ pathMode: mode.id })}
+                >
+                  {mode.label}
+                </Chip>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <label htmlFor="brush" className="w-14 shrink-0 text-xs font-medium text-muted">
                 Line
               </label>
               <Slider
                 id="brush"
+                className="min-w-0 w-auto flex-1"
                 min={1}
                 max={14}
                 step={1}
@@ -472,9 +554,23 @@ export function KaleidoControls({
                 onValueChange={(value) => onChange({ brush: value[0] ?? 5 })}
                 aria-label="Line thickness"
               />
-              <span className="w-8 text-right font-medium tabular-nums text-fg">{settings.brush}</span>
+              <span className="w-8 shrink-0 text-right font-medium tabular-nums text-fg">{settings.brush}</span>
             </div>
-            <div className="mt-3 flex flex-wrap gap-1" role="radiogroup" aria-label="Color motion">
+            <div className="mt-3 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Color">
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Color</span>
+              {COLOR_MODES.map((mode) => (
+                <Chip
+                  key={mode.id}
+                  testId={`btn-palette-${mode.id}`}
+                  active={settings.colorMode === mode.id}
+                  onClick={() => onChange({ colorMode: mode.id })}
+                >
+                  {mode.label}
+                </Chip>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Color motion">
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Motion</span>
               {COLOR_MOTIONS.map((mode) => (
                 <Chip
                   key={mode.id}
@@ -485,11 +581,27 @@ export function KaleidoControls({
                   {mode.label}
                 </Chip>
               ))}
-              <Chip active={parked} onClick={onTogglePark} hint="Lines stay until you change the decay">
-                Park
-              </Chip>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1" role="radiogroup" aria-label="Light activity">
+            {settings.colorMotion === "hold" ? (
+              <div className="mt-2 flex items-center gap-2">
+                <label htmlFor="hue" className="w-14 shrink-0 text-xs font-medium text-muted">
+                  Hue
+                </label>
+                <Slider
+                  id="hue"
+                  className="min-w-0 w-auto flex-1"
+                  min={0}
+                  max={359}
+                  step={1}
+                  value={[settings.hue]}
+                  onValueChange={(value) => onChange({ hue: value[0] ?? 0 })}
+                  aria-label="Hue"
+                />
+                <span className="w-8 shrink-0 text-right font-medium tabular-nums text-fg">{settings.hue}</span>
+              </div>
+            ) : null}
+            <div className="mt-2 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Light activity">
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Light</span>
               {LIGHT_ACTIVITIES.map((mode) => (
                 <Chip
                   key={mode.id}
@@ -501,8 +613,41 @@ export function KaleidoControls({
                 </Chip>
               ))}
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Fill">
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Fill</span>
+              {FILL_MODES.map((mode) => (
+                <Chip
+                  key={mode.id}
+                  testId={`btn-fill-${mode.id}`}
+                  hint={mode.hint}
+                  active={settings.fillMode === mode.id}
+                  onClick={() => onChange({ fillMode: mode.id })}
+                >
+                  {mode.label}
+                </Chip>
+              ))}
+            </div>
+            {settings.fillMode !== "off" ? (
+              <>
+                <p className="mt-1 text-xs text-muted">{fillRelation(settings)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Fill recipe">
+                  <span className="w-14 shrink-0 text-xs font-medium text-muted">Tone</span>
+                  {FILL_RECIPES.map((mode) => (
+                    <Chip
+                      key={mode.id}
+                      testId={`btn-recipe-${mode.id}`}
+                      hint={mode.hint}
+                      active={settings.fillRecipe === mode.id}
+                      onClick={() => onChange({ fillRecipe: mode.id })}
+                    >
+                      {mode.label}
+                    </Chip>
+                  ))}
+                </div>
+              </>
+            ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label="Macro slots">
-              <span className="w-16 shrink-0 text-xs font-medium text-muted">Slots</span>
+              <span className="w-14 shrink-0 text-xs font-medium text-muted">Slots</span>
               {MACRO_SLOTS.map((slot) => (
                 <MacroChip
                   key={slot}
@@ -514,23 +659,6 @@ export function KaleidoControls({
                 />
               ))}
             </div>
-            {settings.colorMotion === "hold" ? (
-              <div className="mt-2 flex items-center gap-3">
-                <label htmlFor="hue" className="w-16 shrink-0 text-xs font-medium text-muted">
-                  Hue
-                </label>
-                <Slider
-                  id="hue"
-                  min={0}
-                  max={359}
-                  step={1}
-                  value={[settings.hue]}
-                  onValueChange={(value) => onChange({ hue: value[0] ?? 0 })}
-                  aria-label="Hue"
-                />
-                <span className="w-8 text-right font-medium tabular-nums text-fg">{settings.hue}</span>
-              </div>
-            ) : null}
             <div className="mt-3 flex flex-wrap gap-1" role="radiogroup" aria-label="Clip length">
               {RECORD_OPTIONS.map((seconds) => (
                 <Chip
@@ -542,12 +670,22 @@ export function KaleidoControls({
                   {seconds}s
                 </Chip>
               ))}
+              {clipHeld && !recording ? (
+                <Chip
+                  testId="btn-download-clip-tune"
+                  active={clipState === "ready"}
+                  onClick={onDownloadClip}
+                  hint="Save the clip to this computer"
+                >
+                  Download
+                </Chip>
+              ) : null}
               <Chip
                 active={recording}
                 onClick={onRecord}
                 hint={recordEnabled ? "Record the lens" : "Recording isn’t available here"}
               >
-                {recording ? `${remain.toFixed(0)}s` : clipState === "saved" ? "Saved" : "Record"}
+                {recording ? `${remain.toFixed(0)}s` : "Record"}
               </Chip>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2">
@@ -598,20 +736,24 @@ export function KaleidoControls({
                   data-testid="btn-social-gif"
                   size="sm"
                   variant="secondary"
-                  onClick={() => downloadAsset("/kaleido.gif", "kaleido.gif")}
+                  title="Save a 3 second GIF of the lens"
+                  disabled={exportKind !== null}
+                  onClick={onExportGif}
                 >
                   <Film />
-                  GIF
+                  {exportKind === "gif" ? "…" : "GIF"}
                 </Button>
                 <Button
                   type="button"
                   data-testid="btn-social-mp4"
                   size="sm"
                   variant="secondary"
-                  onClick={() => downloadAsset("/kaleido-loop.mp4", "kaleido-loop.mp4")}
+                  title="Save a 3 second MP4 of the lens"
+                  disabled={exportKind !== null}
+                  onClick={onExportMp4}
                 >
                   <Film />
-                  MP4
+                  {exportKind === "mp4" ? "…" : "MP4"}
                 </Button>
                 <Button
                   type="button"
@@ -627,9 +769,10 @@ export function KaleidoControls({
             {moreOpen && helpOpen ? (
               <ul className="mt-3 space-y-1 text-xs leading-relaxed text-muted">
                 <li>Space opens the dial · Arrows choose · Enter locks · Esc closes</li>
-                <li>F freeze · V record · R random · E save · C clear · L decay</li>
+                <li>F freeze · V record · GIF and MP4 save a 3s loop · R random · E save · C clear · L decay</li>
                 <li>WASD paint · Alt or right-drag a second brush · B pin</li>
                 <li>H hide UI · P path · T tune · Wheel decay · 2–9 folds</li>
+                <li>Tune · path follows the folds · fill follows the path · Tide follows the light</li>
                 <li>1 and 0 recall macros · Shift+1 / Shift+0 overwrite · Hold slot to save</li>
                 {settings.iconKind ? (
                   <li data-testid="icon-kind">Idle · {settings.iconKind}</li>
@@ -639,9 +782,10 @@ export function KaleidoControls({
               </ul>
             ) : (
               <p className="mt-3 hidden text-xs leading-relaxed text-pretty text-muted sm:block">
-                Space opens the menu. Arrows pick a control, Enter locks it. Lines decay unless Park is on.
+                Space opens the menu. Arrows pick a control, Enter locks it. Park holds the lines. Tide follows the light.
               </p>
             )}
+            </div>
           </div>
         ) : (
           <>

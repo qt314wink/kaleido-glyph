@@ -42,6 +42,24 @@ export const LIGHT_ACTIVITIES = [
 
 export type LightActivity = (typeof LIGHT_ACTIVITIES)[number]["id"];
 
+export const FILL_MODES = [
+  { id: "off", label: "Off", hint: "No room color" },
+  { id: "cells", label: "Cells", hint: "Fill closed loops. The rim stays empty." },
+  { id: "wedges", label: "Wedges", hint: "Fold rays make a room of every sector." },
+] as const;
+
+export type FillMode = (typeof FILL_MODES)[number]["id"];
+
+export const FILL_RECIPES = [
+  { id: "wash", label: "Wash", hint: "One hue across the room" },
+  { id: "vein", label: "Vein", hint: "Hue taken from the wall that closed it" },
+  { id: "well", label: "Well", hint: "Brighter in the middle of the room" },
+  { id: "tide", label: "Tide", hint: "Rooms breathe with the light" },
+  { id: "cloisonne", label: "Cloisonné", hint: "Stepped hues around the fold" },
+] as const;
+
+export type FillRecipe = (typeof FILL_RECIPES)[number]["id"];
+
 export const DIAL_IDS = [
   "freeze",
   "record",
@@ -86,6 +104,8 @@ export type KaleidoSettings = {
   frozen: boolean;
   icon: IconCoeffs | null;
   iconKind: IconKind | null;
+  fillMode: FillMode;
+  fillRecipe: FillRecipe;
 };
 
 export const DEFAULT_SETTINGS: KaleidoSettings = {
@@ -101,6 +121,8 @@ export const DEFAULT_SETTINGS: KaleidoSettings = {
   frozen: false,
   icon: null,
   iconKind: null,
+  fillMode: "off",
+  fillRecipe: "wash",
 };
 
 export const SEG_MIN = 2;
@@ -128,6 +150,14 @@ export function isColorMotion(value: unknown): value is ColorMotion {
 
 export function isLightActivity(value: unknown): value is LightActivity {
   return LIGHT_ACTIVITIES.some((mode) => mode.id === value);
+}
+
+export function isFillMode(value: unknown): value is FillMode {
+  return FILL_MODES.some((mode) => mode.id === value);
+}
+
+export function isFillRecipe(value: unknown): value is FillRecipe {
+  return FILL_RECIPES.some((mode) => mode.id === value);
 }
 
 export function clamp(n: number, min: number, max: number) {
@@ -158,6 +188,8 @@ export function applyLook(look: KaleidoLook, frozen: boolean): KaleidoSettings {
     frozen,
     icon,
     iconKind: icon ? (look.iconKind ?? classifyIcon(icon)) : null,
+    fillMode: isFillMode(look.fillMode) ? look.fillMode : "off",
+    fillRecipe: isFillRecipe(look.fillRecipe) ? look.fillRecipe : "wash",
   };
 }
 
@@ -243,6 +275,8 @@ export function loadSettings(): KaleidoSettings {
       frozen: false,
       icon,
       iconKind: icon ? (parsed.iconKind ?? classifyIcon(icon)) : null,
+      fillMode: isFillMode(parsed.fillMode) ? parsed.fillMode : "off",
+      fillRecipe: isFillRecipe(parsed.fillRecipe) ? parsed.fillRecipe : "wash",
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -264,9 +298,11 @@ export function randomSettings(): KaleidoSettings {
   const modes = COLOR_MODES.map((mode) => mode.id);
   const paths = PATH_MODES.map((mode) => mode.id);
   const lights = LIGHT_ACTIVITIES.map((mode) => mode.id);
+  const recipes = FILL_RECIPES.map((mode) => mode.id);
   const segments = segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8;
   const sampled = sampleIcon(segments);
   const ring = sampled.kind === "ring";
+  const fillRoll = Math.random();
   return {
     segments,
     colorMode: modes[Math.floor(Math.random() * modes.length)] ?? "spectrum",
@@ -282,5 +318,7 @@ export function randomSettings(): KaleidoSettings {
     frozen: false,
     icon: sampled.coeffs,
     iconKind: sampled.kind,
+    fillMode: fillRoll < 0.22 ? "cells" : fillRoll < 0.34 ? "wedges" : "off",
+    fillRecipe: recipes[Math.floor(Math.random() * recipes.length)] ?? "wash",
   };
 }

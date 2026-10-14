@@ -1,5 +1,7 @@
 import { ICON_BURN, ICON_N, iconStep, type IconCoeffs } from "./icon";
+import { FillStencil, fillMaskSize, paintFill, type FillMap, type FillStroke } from "./fill";
 import { KaleidoGL, hslToRgb, type GLFrame, type GLIcon, type GLStroke } from "./gl";
+import { downloadBlob } from "./recorder";
 import type { ColorMode, ColorMotion, KaleidoSettings, LensLayout, LightActivity } from "./types";
 
 const BG = "rgb(8, 8, 11)";
@@ -32,6 +34,9 @@ type Stroke = {
 
 type IconPt = { x: number; y: number; px: number; py: number; qx: number; qy: number; seed: number };
 
+const COLOR: RGBA = { h: 0, s: 0, l: 0, a: 1 };
+const ACT = { a: 1, h: 0, w: 1 };
+
 function colorAt(
   mode: ColorMode,
   motion: ColorMotion,
@@ -45,53 +50,92 @@ function colorAt(
   const ang = Math.atan2(y, x);
   const t = motion === "hold" ? 0 : time;
   const off = hue;
+  COLOR.a = 1;
   switch (mode) {
     case "spectrum":
-      return { h: (t * 46 + u * 150 + off) % 360, s: 84, l: 58, a: 1 };
+      COLOR.h = (t * 46 + u * 150 + off) % 360;
+      COLOR.s = 84;
+      COLOR.l = 58;
+      break;
     case "prism":
-      return { h: (((ang * 180) / Math.PI + 360 + t * 10 + off) % 360 + 360) % 360, s: 80, l: 60, a: 1 };
+      COLOR.h = (((ang * 180) / Math.PI + 360 + t * 10 + off) % 360 + 360) % 360;
+      COLOR.s = 80;
+      COLOR.l = 60;
+      break;
     case "aurora":
-      return { h: (150 + Math.sin(t * 0.65 + u * 5) * 78 + off + 360) % 360, s: 74, l: 56, a: 1 };
+      COLOR.h = (150 + Math.sin(t * 0.65 + u * 5) * 78 + off + 360) % 360;
+      COLOR.s = 74;
+      COLOR.l = 56;
+      break;
     case "ember":
-      return { h: (16 + Math.sin(t * 1.05 + u * 6) * 16 + off + 360) % 360, s: 90, l: 56, a: 1 };
+      COLOR.h = (16 + Math.sin(t * 1.05 + u * 6) * 16 + off + 360) % 360;
+      COLOR.s = 90;
+      COLOR.l = 56;
+      break;
     case "ice":
-      return { h: (196 + Math.sin(t * 0.7 + u * 4) * 24 + off + 360) % 360, s: 70, l: 62, a: 1 };
+      COLOR.h = (196 + Math.sin(t * 0.7 + u * 4) * 24 + off + 360) % 360;
+      COLOR.s = 70;
+      COLOR.l = 62;
+      break;
     case "pearl":
-      return { h: (36 + Math.sin(t * 0.5) * 10 + off + 360) % 360, s: 16, l: 78, a: 1 };
+      COLOR.h = (36 + Math.sin(t * 0.5) * 10 + off + 360) % 360;
+      COLOR.s = 16;
+      COLOR.l = 78;
+      break;
   }
+  return COLOR;
 }
 
 function activityAt(kind: LightActivity, time: number, along: number, seed: number, boost: number) {
   const lift = 1 + 0.55 * boost;
   switch (kind) {
     case "steady":
-      return { a: (0.78 + 0.1 * Math.sin(time * 1.6 + seed)) * lift, h: 0, w: 1 };
+      ACT.a = (0.78 + 0.1 * Math.sin(time * 1.6 + seed)) * lift;
+      ACT.h = 0;
+      ACT.w = 1;
+      break;
     case "pulse": {
       const wave = 0.5 + 0.5 * Math.sin(time * 2.8 + seed);
-      return { a: (0.22 + 0.78 * wave) * lift, h: 0, w: 0.82 + 0.28 * wave + 0.2 * boost };
+      ACT.a = (0.22 + 0.78 * wave) * lift;
+      ACT.h = 0;
+      ACT.w = 0.82 + 0.28 * wave + 0.2 * boost;
+      break;
     }
     case "blink": {
       const beat = (time * 2.15 + seed * 0.15) % 1.15;
       const on = beat < 0.62 || (beat > 0.74 && beat < 0.88);
-      return { a: (on ? 0.95 : 0.05) * lift, h: 0, w: on ? 1 : 0.7 };
+      ACT.a = (on ? 0.95 : 0.05) * lift;
+      ACT.h = 0;
+      ACT.w = on ? 1 : 0.7;
+      break;
     }
     case "chase": {
       const head = (time * 0.62 + seed) % 1;
       const d = Math.abs(along - head);
       const prox = Math.min(d, 1 - d);
       const hot = prox < 0.1;
-      return { a: (hot ? 1 : 0.1 + 0.16 * (1 - prox)) * lift, h: along * 50, w: hot ? 1.45 : 0.7 };
+      ACT.a = (hot ? 1 : 0.1 + 0.16 * (1 - prox)) * lift;
+      ACT.h = along * 50;
+      ACT.w = hot ? 1.45 : 0.7;
+      break;
     }
     case "firefly": {
       const tw = Math.sin(time * 6.8 + along * 22 + seed * 11);
       const lit = tw > 0.42;
-      return { a: (lit ? 0.2 + (tw - 0.42) * 1.6 : 0.08) * lift, h: lit ? 24 : 0, w: lit ? 1.25 : 0.72 };
+      ACT.a = (lit ? 0.2 + (tw - 0.42) * 1.6 : 0.08) * lift;
+      ACT.h = lit ? 24 : 0;
+      ACT.w = lit ? 1.25 : 0.72;
+      break;
     }
     case "strobe": {
       const on = Math.sin(time * 16 + seed * 4) > 0.15;
-      return { a: (on ? 1 : 0.04) * lift, h: on ? 10 : 0, w: on ? 1.12 : 0.75 };
+      ACT.a = (on ? 1 : 0.04) * lift;
+      ACT.h = on ? 10 : 0;
+      ACT.w = on ? 1.12 : 0.75;
+      break;
     }
   }
+  return ACT;
 }
 
 function prefersReducedMotion() {
@@ -174,6 +218,19 @@ export class KaleidoEngine {
   private menuOpen = false;
   private icons: IconPt[] = [];
   private iconK = 0;
+  private stencil: FillStencil | null = null;
+  private fillMap: FillMap | null = null;
+  private fillSig = "";
+  private fillPaintKey = "";
+  private fillRGBA: Uint8ClampedArray | null = null;
+  private fillCanvas: HTMLCanvasElement | null = null;
+  private fillCtx: CanvasRenderingContext2D | null = null;
+  private fillImage: ImageData | null = null;
+  private fillRooms = 0;
+  private fillRev = 0;
+  private fillBlitRev = -1;
+  private iconPool: GLIcon[] = [];
+  private strokePool: GLStroke[] = [];
 
   constructor(display: HTMLCanvasElement, root: HTMLElement, settings: KaleidoSettings) {
     this.display = display;
@@ -276,6 +333,11 @@ export class KaleidoEngine {
     return this.display;
   }
 
+  /** Lens center and radius in canvas pixels, for cropping an export. */
+  lensPixels() {
+    return { cx: this.cx, cy: this.cy, radius: this.radius };
+  }
+
   private expose() {
     const el = this.display as HTMLCanvasElement & {
       __kaleido?: Record<string, unknown>;
@@ -294,6 +356,9 @@ export class KaleidoEngine {
         kind: this.settings.iconKind,
         strokeN: this.strokes.length,
         renderer: this.gl ? "gl" : "2d",
+        fill: this.settings.fillMode,
+        recipe: this.settings.fillRecipe,
+        rooms: this.fillRooms,
         layout: this.getLayout(),
       }),
     };
@@ -375,15 +440,8 @@ export class KaleidoEngine {
 
   exportPng(): Promise<void> {
     return this.exportBlob().then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      a.href = url;
-      a.download = `kaleido-${stamp}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `kaleido-${stamp}.png`);
     });
   }
 
@@ -1058,6 +1116,139 @@ export class KaleidoEngine {
     ctx.restore();
   }
 
+  private fillSignature(size: number) {
+    const q = (2 * Math.max(8, this.radius)) / Math.max(8, size);
+    const qi = (v: number) => Math.round(v / q);
+    let count = 0;
+    let width = 0;
+    let h = 2166136261;
+    for (const s of this.strokes) {
+      if (s.len < 2 || this.fadeOf(s) < 0.15) continue;
+      count++;
+      width += s.width;
+      let px = qi(s.xs[0] ?? 0);
+      let py = qi(s.ys[0] ?? 0);
+      h = Math.imul(h ^ (px + 4096), 16777619);
+      h = Math.imul(h ^ (py + 4096), 16777619);
+      for (let i = 1; i < s.len; i++) {
+        const x = qi(s.xs[i] ?? 0);
+        const y = qi(s.ys[i] ?? 0);
+        const dx = x - px;
+        const dy = y - py;
+        if (dx === 0 && dy === 0) continue;
+        h = Math.imul(h ^ (dx + 256), 16777619);
+        h = Math.imul(h ^ (dy + 256), 16777619);
+        px = x;
+        py = y;
+      }
+    }
+    const bucket = Math.round(this.radius / 12);
+    return `${this.settings.fillMode}|${size}|${this.settings.segments}|${this.settings.pathMode}|${bucket}|${count}|${h >>> 0}|${Math.round(width * 4)}`;
+  }
+
+  private syncFill(): { rgba: Uint8ClampedArray; size: number; rev: number } | null {
+    if (this.settings.fillMode === "off") {
+      this.fillRooms = 0;
+      this.fillPaintKey = "";
+      return null;
+    }
+    const size = fillMaskSize(isCoarse());
+    const sig = this.fillSignature(size);
+    if (sig !== this.fillSig) {
+      this.fillSig = sig;
+      this.fillPaintKey = "";
+      if (!this.stencil) this.stencil = new FillStencil();
+      const strokes: FillStroke[] = [];
+      for (const s of this.strokes) {
+        if (s.len < 2 || this.fadeOf(s) < 0.15) continue;
+        strokes.push({
+          xs: s.xs,
+          ys: s.ys,
+          len: s.len,
+          width: Math.max(1.5, s.width * 0.22 * this.dpr),
+        });
+      }
+      try {
+        this.fillMap = this.stencil.build({
+          size,
+          radius: this.radius,
+          n: this.settings.segments,
+          mirrors: this.mirrors(),
+          wedges: this.settings.fillMode === "wedges",
+          strokes,
+        });
+      } catch {
+        this.fillMap = null;
+        this.fillRooms = 0;
+        return null;
+      }
+    }
+    const map = this.fillMap;
+    if (!map || map.rooms.length === 0) {
+      this.fillRooms = 0;
+      return null;
+    }
+    this.fillRooms = map.rooms.length;
+    const recipe = this.settings.fillRecipe;
+    const boost = this.idleBoost();
+    const key = `${sig}|${recipe}|${this.settings.colorMode}|${this.settings.colorMotion}|${this.settings.hue}|${this.settings.lightActivity}|${this.lightTime.toFixed(2)}|${boost.toFixed(2)}|${this.reduced ? 1 : 0}`;
+    const need = size * size * 4;
+    if (!this.fillRGBA || this.fillRGBA.length !== need) {
+      this.fillRGBA = new Uint8ClampedArray(need);
+      this.fillPaintKey = "";
+    }
+    if (key !== this.fillPaintKey && this.fillRGBA) {
+      this.fillPaintKey = key;
+      paintFill(map, this.fillRGBA, {
+        recipe,
+        reduced: this.reduced,
+        sample: (x, y) =>
+          colorAt(
+            this.settings.colorMode,
+            this.settings.colorMotion,
+            this.settings.hue,
+            this.lightTime,
+            x,
+            y,
+            this.radius,
+          ),
+        activity: (seed) =>
+          activityAt(this.settings.lightActivity, this.lightTime, 0.5, seed, boost).a,
+      });
+      this.fillRev++;
+    }
+    return this.fillRGBA ? { rgba: this.fillRGBA, size, rev: this.fillRev } : null;
+  }
+
+  private drawFill(ctx: CanvasRenderingContext2D) {
+    const fill = this.syncFill();
+    if (!fill) return;
+    if (!this.fillCanvas) {
+      this.fillCanvas = document.createElement("canvas");
+      this.fillCtx = this.fillCanvas.getContext("2d", { alpha: true });
+    }
+    const canvas = this.fillCanvas;
+    const ictx = this.fillCtx;
+    if (!ictx) return;
+    if (canvas.width !== fill.size || canvas.height !== fill.size) {
+      canvas.width = fill.size;
+      canvas.height = fill.size;
+      this.fillImage = null;
+    }
+    if (!this.fillImage || this.fillImage.width !== fill.size) {
+      this.fillImage = ictx.createImageData(fill.size, fill.size);
+      this.fillBlitRev = -1;
+    }
+    if (this.fillBlitRev !== fill.rev) {
+      this.fillImage.data.set(fill.rgba);
+      ictx.putImageData(this.fillImage, 0, 0);
+      this.fillBlitRev = fill.rev;
+    }
+    ctx.imageSmoothingEnabled = true;
+    const r = this.radius;
+    ctx.drawImage(canvas, -r, -r, r * 2, r * 2);
+  }
+
   private present() {
     if (this.gl) {
       this.presentGL();
@@ -1073,7 +1264,27 @@ export class KaleidoEngine {
     }
     const boost = this.idleBoost();
     const scale = radius * 0.92;
-    const icons: GLIcon[] = this.icons.map((p) => {
+    const icons = this.iconPool;
+    const iconN = this.icons.length;
+    while (icons.length < iconN) {
+      icons.push({
+        x: 0,
+        y: 0,
+        px: 0,
+        py: 0,
+        qx: 0,
+        qy: 0,
+        seed: 0,
+        rgb: [0, 0, 0],
+        alpha: 0,
+        size: 1,
+      });
+    }
+    if (icons.length !== iconN) icons.length = iconN;
+    for (let i = 0; i < iconN; i++) {
+      const p = this.icons[i];
+      const ic = icons[i];
+      if (!p || !ic) continue;
       const x = p.x * scale;
       const y = p.y * scale;
       const ang = Math.atan2(p.y - p.py, p.x - p.px);
@@ -1086,25 +1297,40 @@ export class KaleidoEngine {
         y,
         this.radius,
       );
+      const hue = color.h;
+      const sat = color.s;
+      const lit = color.l;
       const act = activityAt(this.settings.lightActivity, this.lightTime, p.seed % 1, p.seed, boost);
-      return {
-        x,
-        y,
-        px: p.px * scale,
-        py: p.py * scale,
-        qx: p.qx * scale,
-        qy: p.qy * scale,
-        seed: p.seed,
-        rgb: hslToRgb(color.h, color.s, color.l),
-        alpha: 0.72 * act.a,
-        size: Math.max(1.2, 2.3 * this.dpr * act.w),
-      };
-    });
-    const strokes: GLStroke[] = [];
+      ic.x = x;
+      ic.y = y;
+      ic.px = p.px * scale;
+      ic.py = p.py * scale;
+      ic.qx = p.qx * scale;
+      ic.qy = p.qy * scale;
+      ic.seed = p.seed;
+      hslToRgb(hue, sat, lit, ic.rgb);
+      ic.alpha = 0.72 * act.a;
+      ic.size = Math.max(1.2, 2.3 * this.dpr * act.w);
+    }
+    const strokes = this.strokePool;
+    let strokeN = 0;
     for (const s of this.strokes) {
       if (s.len < 2) continue;
       const fade = this.fadeOf(s);
       if (fade < 0.02) continue;
+      let slot = strokes[strokeN];
+      if (!slot) {
+        slot = {
+          xs: s.xs,
+          ys: s.ys,
+          len: s.len,
+          width: s.width,
+          seed: s.seed,
+          fade,
+          rgb: [0, 0, 0],
+        };
+        strokes[strokeN] = slot;
+      }
       const mid = Math.max(0, (s.len >> 1) - 1);
       const color = colorAt(
         this.settings.colorMode,
@@ -1115,16 +1341,16 @@ export class KaleidoEngine {
         s.ys[mid] ?? 0,
         this.radius,
       );
-      strokes.push({
-        xs: s.xs,
-        ys: s.ys,
-        len: s.len,
-        width: s.width,
-        seed: s.seed,
-        fade,
-        rgb: hslToRgb(color.h, color.s, Math.min(78, color.l + 8)),
-      });
+      slot.xs = s.xs;
+      slot.ys = s.ys;
+      slot.len = s.len;
+      slot.width = s.width;
+      slot.seed = s.seed;
+      slot.fade = fade;
+      hslToRgb(color.h, color.s, Math.min(78, color.l + 8), slot.rgb);
+      strokeN++;
     }
+    if (strokes.length !== strokeN) strokes.length = strokeN;
     const showKey = this.keyInited && [...this.keys].some((code) => WASD.has(code) || ARROWS.has(code));
     const frame: GLFrame = {
       width: w,
@@ -1145,6 +1371,7 @@ export class KaleidoEngine {
       strokes,
       icons,
       iconRing: this.settings.iconKind === "ring",
+      fill: this.syncFill(),
     };
     this.gl?.draw(frame);
   }
@@ -1172,6 +1399,7 @@ export class KaleidoEngine {
     ctx.lineJoin = "round";
     ctx.globalCompositeOperation = "source-over";
 
+    this.drawFill(ctx);
     this.drawIcons(ctx);
 
     const n = this.settings.segments;

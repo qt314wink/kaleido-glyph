@@ -4,7 +4,8 @@ import { _ as Ellipsis, a as Spline, b as Circle, c as Shuffle, d as Pin, f as P
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { i as SliderTrack, n as SliderRange, r as SliderThumb, t as Slider$1 } from "../_libs/@radix-ui/react-slider+[...].mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-B80iZcSQ.js
+import { n as ct, r as nt, t as H } from "../_libs/gifenc.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-DqUbJSap.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -318,6 +319,50 @@ var LIGHT_ACTIVITIES = [
 		hint: "Fast flash"
 	}
 ];
+var FILL_MODES = [
+	{
+		id: "off",
+		label: "Off",
+		hint: "No room color"
+	},
+	{
+		id: "cells",
+		label: "Cells",
+		hint: "Fill closed loops. The rim stays empty."
+	},
+	{
+		id: "wedges",
+		label: "Wedges",
+		hint: "Fold rays make a room of every sector."
+	}
+];
+var FILL_RECIPES = [
+	{
+		id: "wash",
+		label: "Wash",
+		hint: "One hue across the room"
+	},
+	{
+		id: "vein",
+		label: "Vein",
+		hint: "Hue taken from the wall that closed it"
+	},
+	{
+		id: "well",
+		label: "Well",
+		hint: "Brighter in the middle of the room"
+	},
+	{
+		id: "tide",
+		label: "Tide",
+		hint: "Rooms breathe with the light"
+	},
+	{
+		id: "cloisonne",
+		label: "Cloisonné",
+		hint: "Stepped hues around the fold"
+	}
+];
 var DIAL_IDS = [
 	"freeze",
 	"record",
@@ -360,7 +405,9 @@ var DEFAULT_SETTINGS = {
 	spin: true,
 	frozen: false,
 	icon: null,
-	iconKind: null
+	iconKind: null,
+	fillMode: "off",
+	fillRecipe: "wash"
 };
 var STORAGE_KEY = "kaleido.settings.v5";
 var MACRO_SLOTS = ["1", "0"];
@@ -376,6 +423,12 @@ function isColorMotion(value) {
 }
 function isLightActivity(value) {
 	return LIGHT_ACTIVITIES.some((mode) => mode.id === value);
+}
+function isFillMode(value) {
+	return FILL_MODES.some((mode) => mode.id === value);
+}
+function isFillRecipe(value) {
+	return FILL_RECIPES.some((mode) => mode.id === value);
 }
 function clamp(n, min, max) {
 	return Math.min(max, Math.max(min, n));
@@ -401,7 +454,9 @@ function applyLook(look, frozen) {
 		spin: look.spin !== false,
 		frozen,
 		icon,
-		iconKind: icon ? look.iconKind ?? classifyIcon(icon) : null
+		iconKind: icon ? look.iconKind ?? classifyIcon(icon) : null,
+		fillMode: isFillMode(look.fillMode) ? look.fillMode : "off",
+		fillRecipe: isFillRecipe(look.fillRecipe) ? look.fillRecipe : "wash"
 	};
 }
 function emptyMacros() {
@@ -468,7 +523,9 @@ function loadSettings() {
 			spin: parsed.spin !== false,
 			frozen: false,
 			icon,
-			iconKind: icon ? parsed.iconKind ?? classifyIcon(icon) : null
+			iconKind: icon ? parsed.iconKind ?? classifyIcon(icon) : null,
+			fillMode: isFillMode(parsed.fillMode) ? parsed.fillMode : "off",
+			fillRecipe: isFillRecipe(parsed.fillRecipe) ? parsed.fillRecipe : "wash"
 		};
 	} catch {
 		return { ...DEFAULT_SETTINGS };
@@ -496,9 +553,11 @@ function randomSettings() {
 	const modes = COLOR_MODES.map((mode) => mode.id);
 	const paths = PATH_MODES.map((mode) => mode.id);
 	const lights = LIGHT_ACTIVITIES.map((mode) => mode.id);
+	const recipes = FILL_RECIPES.map((mode) => mode.id);
 	const segments = segmentChoices[Math.floor(Math.random() * segmentChoices.length)] ?? 8;
 	const sampled = sampleIcon(segments);
 	const ring = sampled.kind === "ring";
+	const fillRoll = Math.random();
 	return {
 		segments,
 		colorMode: modes[Math.floor(Math.random() * modes.length)] ?? "spectrum",
@@ -511,12 +570,15 @@ function randomSettings() {
 		spin: Math.random() > .35,
 		frozen: false,
 		icon: sampled.coeffs,
-		iconKind: sampled.kind
+		iconKind: sampled.kind,
+		fillMode: fillRoll < .22 ? "cells" : fillRoll < .34 ? "wedges" : "off",
+		fillRecipe: recipes[Math.floor(Math.random() * recipes.length)] ?? "wash"
 	};
 }
-function Chip({ active, children, onClick, hint }) {
+function Chip({ active, children, onClick, hint, testId }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 		type: "button",
+		"data-testid": testId,
 		title: hint,
 		onClick,
 		className: cn("h-10 shrink-0 rounded-md px-3.5 text-sm font-medium transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]", active ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2 hover:text-fg"),
@@ -558,15 +620,55 @@ function MacroChip({ slot, look, active, onRecall, onSave }) {
 		children: caption
 	});
 }
-function downloadAsset(href, filename) {
-	const a = document.createElement("a");
-	a.href = href;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
+function placePetal(x, y, lens, hasLens) {
+	if (!hasLens || typeof window === "undefined") return {
+		x,
+		y
+	};
+	const minY = 112;
+	const maxY = Math.max(120, window.innerHeight - 84);
+	const minX = 28;
+	const maxX = Math.max(36, window.innerWidth - 28);
+	const minDist = lens.radius + 36;
+	let dx = x - lens.cx;
+	let dy = y - lens.cy;
+	let dist = Math.hypot(dx, dy) || 1;
+	if (dist < minDist) {
+		dx = dx / dist * minDist;
+		dy = dy / dist * minDist;
+		dist = minDist;
+	}
+	let px = lens.cx + dx;
+	let py = lens.cy + dy;
+	px = Math.min(maxX, Math.max(minX, px));
+	py = Math.min(maxY, Math.max(minY, py));
+	dx = px - lens.cx;
+	dy = py - lens.cy;
+	dist = Math.hypot(dx, dy) || 1;
+	if (dist < minDist) {
+		const ox = lens.cx + dx / dist * minDist;
+		const oy = lens.cy + dy / dist * minDist;
+		if (ox >= minX && ox <= maxX && oy >= minY && oy <= maxY) return {
+			x: ox,
+			y: oy
+		};
+	}
+	return {
+		x: px,
+		y: py
+	};
 }
-function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, clipMax, tuneOpen, dialOpen, helpOpen, moreOpen, recordEnabled, pinned, hiddenChrome, flower: flowerChrome, lens, focusId, macros, macroSlot, onChange, onRandomize, onClear, onExport, onCopy, onRecord, onRecordSeconds, onToggleTune, onToggleDial, onTogglePin, onToggleHelp, onToggleMore, onHideChrome, onCloseMenus, onTogglePark, onCycleLight, onRecallMacro, onSaveMacro, onChromeHeight, onFocusId }) {
+function fillRelation(settings) {
+	if (settings.fillMode === "off") return null;
+	const light = LIGHT_ACTIVITIES.find((mode) => mode.id === settings.lightActivity)?.label ?? "the light";
+	const mirror = settings.pathMode !== "rosette";
+	if (settings.fillMode === "cells") return settings.fillRecipe === "tide" ? `Closed loops · rim stays empty · breathes with ${light}` : "Closed loops · the rim stays empty";
+	const fold = mirror ? `${settings.segments} folds, mirrored` : `${settings.segments} folds, rotations only`;
+	if (settings.fillRecipe === "tide") return `${fold} · breathes with ${light}`;
+	if (settings.fillRecipe === "cloisonne") return `${fold} · one hue step per sector`;
+	return `${fold} · rays are the walls`;
+}
+function KaleidoControls({ settings, exported, copied, clipState, clipHeld, clipElapsed, clipMax, tuneOpen, dialOpen, helpOpen, moreOpen, recordEnabled, pinned, hiddenChrome, flower: flowerChrome, lens, focusId, macros, macroSlot, onChange, onRandomize, onClear, onExport, onExportGif, onExportMp4, exportKind, onCopy, onRecord, onDownloadClip, onRecordSeconds, onToggleTune, onToggleDial, onTogglePin, onToggleHelp, onToggleMore, onHideChrome, onCloseMenus, onTogglePark, onCycleLight, onRecallMacro, onSaveMacro, onChromeHeight, onFocusId }) {
 	const chromeRef = (0, import_react.useRef)(null);
 	const remain = Math.max(0, clipMax - clipElapsed);
 	const recording = clipState === "recording";
@@ -606,11 +708,11 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 		},
 		{
 			id: "record",
-			label: recording ? `${remain.toFixed(0)}s left` : clipState === "saved" ? "Saved" : `Record ${clipMax}s`,
+			label: recording ? `${remain.toFixed(0)}s left` : clipState === "ready" ? "Download" : `Record ${clipMax}s`,
 			testId: "btn-record",
-			active: recording,
-			onClick: onRecord,
-			icon: recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Square, { className: "size-4 fill-current" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Circle, { className: "size-4 fill-destructive text-destructive" })
+			active: recording || clipState === "ready",
+			onClick: clipState === "ready" ? onDownloadClip : onRecord,
+			icon: clipState === "ready" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "size-5" }) : recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Square, { className: "size-4 fill-current" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Circle, { className: "size-4 fill-destructive text-destructive" })
 		},
 		{
 			id: "random",
@@ -681,7 +783,6 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 	const flower = showPetals && flowerChrome;
 	const dock = showPetals && !flowerChrome;
 	const hasLens = lens.radius > 40;
-	const petalR = hasLens ? lens.radius + 52 : 110;
 	if (hiddenChrome) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -701,9 +802,12 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 				children: focused.label
 			}) : null,
 			petals.map((petal, i) => {
-				const ang = (126 + (i + .5) / petals.length * 288) * Math.PI / 180;
-				const x = hasLens ? lens.cx + Math.cos(ang) * petalR : Math.cos(ang) * petalR;
-				const y = hasLens ? lens.cy + Math.sin(ang) * petalR : Math.sin(ang) * petalR;
+				const deg = 126 + (i + .5) / petals.length * 288;
+				const orbit = hasLens ? lens.radius + 52 : 110;
+				const ang = deg * Math.PI / 180;
+				const placed = placePetal(hasLens ? lens.cx + Math.cos(ang) * orbit : Math.cos(ang) * orbit, hasLens ? lens.cy + Math.sin(ang) * orbit : Math.sin(ang) * orbit, lens, hasLens);
+				const x = placed.x;
+				const y = placed.y;
 				return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					type: "button",
 					"data-testid": flower ? petal.testId : void 0,
@@ -729,277 +833,367 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 				ref: chromeRef,
 				className: "pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
 				children: tuneOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "pointer-events-auto w-full max-w-md rounded-2xl bg-surface p-4 shadow-[var(--shadow-border)]",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mb-3 flex items-center justify-between",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-								className: "text-sm font-medium text-fg",
-								children: "Tune"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								"data-testid": "btn-tune-close",
-								"aria-label": "Close tune",
-								onClick: onCloseMenus,
-								className: "flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "size-4" })
-							})]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center gap-3",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-									htmlFor: "persist",
-									className: "w-16 shrink-0 text-xs font-medium text-muted",
-									children: "Decay"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
-									id: "persist",
-									"data-testid": "slider-persist",
-									min: 0,
-									max: 100,
-									step: 1,
-									value: [settings.persist],
-									onValueChange: (value) => onChange({ persist: value[0] ?? 88 }),
-									"aria-label": "How long trails linger"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "w-12 text-right text-xs font-medium tabular-nums text-fg",
-									children: persistLabel(settings.persist)
-								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-1 flex items-center gap-3",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-									htmlFor: "segments",
-									className: "w-16 shrink-0 text-xs font-medium text-muted",
-									children: "Folds"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
-									id: "segments",
-									"data-testid": "slider-segments",
-									min: 2,
-									max: 16,
-									step: 1,
-									value: [settings.segments],
-									onValueChange: (value) => onChange({ segments: value[0] ?? 8 }),
-									"aria-label": "Segment count"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "w-8 text-right font-medium tabular-nums text-fg",
-									children: settings.segments
-								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-1 flex items-center gap-3",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-									htmlFor: "brush",
-									className: "w-16 shrink-0 text-xs font-medium text-muted",
-									children: "Line"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
-									id: "brush",
-									min: 1,
-									max: 14,
-									step: 1,
-									value: [settings.brush],
-									onValueChange: (value) => onChange({ brush: value[0] ?? 5 }),
-									"aria-label": "Line thickness"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "w-8 text-right font-medium tabular-nums text-fg",
-									children: settings.brush
-								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-3 flex flex-wrap gap-1",
-							role: "radiogroup",
-							"aria-label": "Color motion",
-							children: [COLOR_MOTIONS.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
-								hint: mode.hint,
-								active: settings.colorMotion === mode.id,
-								onClick: () => onChange({ colorMotion: mode.id }),
-								children: mode.label
-							}, mode.id)), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
-								active: parked,
-								onClick: onTogglePark,
-								hint: "Lines stay until you change the decay",
-								children: "Park"
-							})]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "mt-2 flex flex-wrap gap-1",
-							role: "radiogroup",
-							"aria-label": "Light activity",
-							children: LIGHT_ACTIVITIES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
-								hint: mode.hint,
-								active: settings.lightActivity === mode.id,
-								onClick: () => onChange({ lightActivity: mode.id }),
-								children: mode.label
-							}, mode.id))
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-2 flex flex-wrap items-center gap-1",
-							role: "group",
-							"aria-label": "Macro slots",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "w-16 shrink-0 text-xs font-medium text-muted",
-								children: "Slots"
-							}), MACRO_SLOTS.map((slot) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MacroChip, {
-								slot,
-								look: macros[slot],
-								active: macroSlot === slot,
-								onRecall: () => onRecallMacro(slot),
-								onSave: () => onSaveMacro(slot)
-							}, slot))]
-						}),
-						settings.colorMotion === "hold" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-2 flex items-center gap-3",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-									htmlFor: "hue",
-									className: "w-16 shrink-0 text-xs font-medium text-muted",
-									children: "Hue"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
-									id: "hue",
-									min: 0,
-									max: 359,
-									step: 1,
-									value: [settings.hue],
-									onValueChange: (value) => onChange({ hue: value[0] ?? 0 }),
-									"aria-label": "Hue"
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "w-8 text-right font-medium tabular-nums text-fg",
-									children: settings.hue
-								})
-							]
-						}) : null,
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-3 flex flex-wrap gap-1",
-							role: "radiogroup",
-							"aria-label": "Clip length",
-							children: [RECORD_OPTIONS.map((seconds) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Chip, {
-								active: clipMax === seconds,
-								onClick: () => onRecordSeconds(seconds),
-								hint: `Record ${seconds} seconds`,
-								children: [seconds, "s"]
-							}, seconds)), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
-								active: recording,
-								onClick: onRecord,
-								hint: recordEnabled ? "Record the lens" : "Recording isn’t available here",
-								children: recording ? `${remain.toFixed(0)}s` : clipState === "saved" ? "Saved" : "Record"
-							})]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-3 grid grid-cols-4 gap-2",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+					className: "pointer-events-auto flex max-h-[min(48dvh,26rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center justify-between px-4 pt-4 pb-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-sm font-medium text-fg",
+							children: "Tune"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							"data-testid": "btn-tune-close",
+							"aria-label": "Close tune",
+							onClick: onCloseMenus,
+							className: "flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "size-4" })
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "overflow-y-auto px-4 pb-4",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										htmlFor: "persist",
+										className: "w-14 shrink-0 text-xs font-medium text-muted",
+										children: "Decay"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
+										id: "persist",
+										"data-testid": "slider-persist",
+										className: "min-w-0 w-auto flex-1",
+										min: 0,
+										max: 100,
+										step: 1,
+										value: [settings.persist],
+										onValueChange: (value) => onChange({ persist: value[0] ?? 88 }),
+										"aria-label": "How long trails linger"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "w-12 shrink-0 text-right text-xs font-medium tabular-nums text-fg",
+										children: persistLabel(settings.persist)
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+										active: parked,
+										onClick: onTogglePark,
+										hint: "Hold the lines until decay moves",
+										children: "Park"
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex items-center gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										htmlFor: "segments",
+										className: "w-14 shrink-0 text-xs font-medium text-muted",
+										children: "Folds"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
+										id: "segments",
+										"data-testid": "slider-segments",
+										className: "min-w-0 w-auto flex-1",
+										min: 2,
+										max: 16,
+										step: 1,
+										value: [settings.segments],
+										onValueChange: (value) => onChange({ segments: value[0] ?? 8 }),
+										"aria-label": "Segment count"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "w-8 shrink-0 text-right font-medium tabular-nums text-fg",
+										children: settings.segments
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Path",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Path"
+								}), PATH_MODES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									testId: `btn-path-${mode.id}`,
+									hint: mode.hint,
+									active: settings.pathMode === mode.id,
+									onClick: () => onChange({ pathMode: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex items-center gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										htmlFor: "brush",
+										className: "w-14 shrink-0 text-xs font-medium text-muted",
+										children: "Line"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
+										id: "brush",
+										className: "min-w-0 w-auto flex-1",
+										min: 1,
+										max: 14,
+										step: 1,
+										value: [settings.brush],
+										onValueChange: (value) => onChange({ brush: value[0] ?? 5 }),
+										"aria-label": "Line thickness"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "w-8 shrink-0 text-right font-medium tabular-nums text-fg",
+										children: settings.brush
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-3 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Color",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Color"
+								}), COLOR_MODES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									testId: `btn-palette-${mode.id}`,
+									active: settings.colorMode === mode.id,
+									onClick: () => onChange({ colorMode: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Color motion",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Motion"
+								}), COLOR_MOTIONS.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									hint: mode.hint,
+									active: settings.colorMotion === mode.id,
+									onClick: () => onChange({ colorMotion: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							}),
+							settings.colorMotion === "hold" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex items-center gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										htmlFor: "hue",
+										className: "w-14 shrink-0 text-xs font-medium text-muted",
+										children: "Hue"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Slider, {
+										id: "hue",
+										className: "min-w-0 w-auto flex-1",
+										min: 0,
+										max: 359,
+										step: 1,
+										value: [settings.hue],
+										onValueChange: (value) => onChange({ hue: value[0] ?? 0 }),
+										"aria-label": "Hue"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "w-8 shrink-0 text-right font-medium tabular-nums text-fg",
+										children: settings.hue
+									})
+								]
+							}) : null,
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Light activity",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Light"
+								}), LIGHT_ACTIVITIES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									hint: mode.hint,
+									active: settings.lightActivity === mode.id,
+									onClick: () => onChange({ lightActivity: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-3 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Fill",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Fill"
+								}), FILL_MODES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									testId: `btn-fill-${mode.id}`,
+									hint: mode.hint,
+									active: settings.fillMode === mode.id,
+									onClick: () => onChange({ fillMode: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							}),
+							settings.fillMode !== "off" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "mt-1 text-xs text-muted",
+								children: fillRelation(settings)
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-1 flex flex-wrap items-center gap-1",
+								role: "radiogroup",
+								"aria-label": "Fill recipe",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Tone"
+								}), FILL_RECIPES.map((mode) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+									testId: `btn-recipe-${mode.id}`,
+									hint: mode.hint,
+									active: settings.fillRecipe === mode.id,
+									onClick: () => onChange({ fillRecipe: mode.id }),
+									children: mode.label
+								}, mode.id))]
+							})] }) : null,
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 flex flex-wrap items-center gap-1",
+								role: "group",
+								"aria-label": "Macro slots",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "w-14 shrink-0 text-xs font-medium text-muted",
+									children: "Slots"
+								}), MACRO_SLOTS.map((slot) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MacroChip, {
+									slot,
+									look: macros[slot],
+									active: macroSlot === slot,
+									onRecall: () => onRecallMacro(slot),
+									onSave: () => onSaveMacro(slot)
+								}, slot))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-3 flex flex-wrap gap-1",
+								role: "radiogroup",
+								"aria-label": "Clip length",
+								children: [
+									RECORD_OPTIONS.map((seconds) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Chip, {
+										active: clipMax === seconds,
+										onClick: () => onRecordSeconds(seconds),
+										hint: `Record ${seconds} seconds`,
+										children: [seconds, "s"]
+									}, seconds)),
+									clipHeld && !recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+										testId: "btn-download-clip-tune",
+										active: clipState === "ready",
+										onClick: onDownloadClip,
+										hint: "Save the clip to this computer",
+										children: "Download"
+									}) : null,
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Chip, {
+										active: recording,
+										onClick: onRecord,
+										hint: recordEnabled ? "Record the lens" : "Recording isn’t available here",
+										children: recording ? `${remain.toFixed(0)}s` : "Record"
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-3 grid grid-cols-4 gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-spin",
+										size: "sm",
+										variant: settings.spin ? "active" : "secondary",
+										onClick: () => onChange({ spin: !settings.spin }),
+										"aria-pressed": settings.spin,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RotateCw, {}), "Spin"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-clear",
+										size: "sm",
+										variant: "secondary",
+										onClick: onClear,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eraser, {}), "Clear"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-export",
+										size: "sm",
+										variant: "secondary",
+										onClick: onExport,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, {}), exported ? "Saved" : "PNG"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										size: "sm",
+										variant: "secondary",
+										onClick: onHideChrome,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(EyeOff, {}), "Hide"]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "mt-2",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
 									type: "button",
-									"data-testid": "btn-spin",
+									"data-testid": "btn-more",
 									size: "sm",
-									variant: settings.spin ? "active" : "secondary",
-									onClick: () => onChange({ spin: !settings.spin }),
-									"aria-pressed": settings.spin,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RotateCw, {}), "Spin"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-clear",
-									size: "sm",
-									variant: "secondary",
-									onClick: onClear,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eraser, {}), "Clear"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-export",
-									size: "sm",
-									variant: "secondary",
-									onClick: onExport,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, {}), exported ? "Saved" : "PNG"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									size: "sm",
-									variant: "secondary",
-									onClick: onHideChrome,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(EyeOff, {}), "Hide"]
+									variant: moreOpen ? "active" : "secondary",
+									onClick: onToggleMore,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ellipsis, {}), "More"]
 								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "mt-2",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-								type: "button",
-								"data-testid": "btn-more",
-								size: "sm",
-								variant: moreOpen ? "active" : "secondary",
-								onClick: onToggleMore,
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ellipsis, {}), "More"]
+							}),
+							moreOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "mt-2 grid grid-cols-4 gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-copy",
+										size: "sm",
+										variant: "secondary",
+										onClick: onCopy,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, {}), copied ? "Copied" : "Copy"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-social-gif",
+										size: "sm",
+										variant: "secondary",
+										title: "Save a 3 second GIF of the lens",
+										disabled: exportKind !== null,
+										onClick: onExportGif,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Film, {}), exportKind === "gif" ? "…" : "GIF"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
+										type: "button",
+										"data-testid": "btn-social-mp4",
+										size: "sm",
+										variant: "secondary",
+										title: "Save a 3 second MP4 of the lens",
+										disabled: exportKind !== null,
+										onClick: onExportMp4,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Film, {}), exportKind === "mp4" ? "…" : "MP4"]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+										type: "button",
+										"data-testid": "btn-help",
+										size: "sm",
+										variant: helpOpen ? "active" : "secondary",
+										onClick: onToggleHelp,
+										children: "Keys"
+									})
+								]
+							}) : null,
+							moreOpen && helpOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ul", {
+								className: "mt-3 space-y-1 text-xs leading-relaxed text-muted",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Space opens the dial · Arrows choose · Enter locks · Esc closes" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "F freeze · V record · GIF and MP4 save a 3s loop · R random · E save · C clear · L decay" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "WASD paint · Alt or right-drag a second brush · B pin" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "H hide UI · P path · T tune · Wheel decay · 2–9 folds" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Tune · path follows the folds · fill follows the path · Tide follows the light" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "1 and 0 recall macros · Shift+1 / Shift+0 overwrite · Hold slot to save" }),
+									settings.iconKind ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
+										"data-testid": "icon-kind",
+										children: ["Idle · ", settings.iconKind]
+									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Idle · hypotrochoid until Random" })
+								]
+							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "mt-3 hidden text-xs leading-relaxed text-pretty text-muted sm:block",
+								children: "Space opens the menu. Arrows pick a control, Enter locks it. Park holds the lines. Tide follows the light."
 							})
-						}),
-						moreOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "mt-2 grid grid-cols-4 gap-2",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-copy",
-									size: "sm",
-									variant: "secondary",
-									onClick: onCopy,
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, {}), copied ? "Copied" : "Copy"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-social-gif",
-									size: "sm",
-									variant: "secondary",
-									onClick: () => downloadAsset("/kaleido.gif", "kaleido.gif"),
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Film, {}), "GIF"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-									type: "button",
-									"data-testid": "btn-social-mp4",
-									size: "sm",
-									variant: "secondary",
-									onClick: () => downloadAsset("/kaleido-loop.mp4", "kaleido-loop.mp4"),
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Film, {}), "MP4"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
-									type: "button",
-									"data-testid": "btn-help",
-									size: "sm",
-									variant: helpOpen ? "active" : "secondary",
-									onClick: onToggleHelp,
-									children: "Keys"
-								})
-							]
-						}) : null,
-						moreOpen && helpOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ul", {
-							className: "mt-3 space-y-1 text-xs leading-relaxed text-muted",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Space opens the dial · Arrows choose · Enter locks · Esc closes" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "F freeze · V record · R random · E save · C clear · L decay" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "WASD paint · Alt or right-drag a second brush · B pin" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "H hide UI · P path · T tune · Wheel decay · 2–9 folds" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "1 and 0 recall macros · Shift+1 / Shift+0 overwrite · Hold slot to save" }),
-								settings.iconKind ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", {
-									"data-testid": "icon-kind",
-									children: ["Idle · ", settings.iconKind]
-								}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "Idle · hypotrochoid until Random" })
-							]
-						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							className: "mt-3 hidden text-xs leading-relaxed text-pretty text-muted sm:block",
-							children: "Space opens the menu. Arrows pick a control, Enter locks it. Lines decay unless Park is on."
-						})
-					]
+						]
+					})]
 				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [dock ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "pointer-events-auto mb-2 w-full max-w-sm rounded-2xl bg-surface p-2 shadow-[var(--shadow-border)]",
 					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -1035,7 +1229,7 @@ function KaleidoControls({ settings, exported, copied, clipState, clipElapsed, c
 		]
 	});
 }
-function hslToRgb(h, s, l) {
+function hslToRgb$1(h, s, l) {
 	const hh = (h % 360 + 360) % 360;
 	const ss = s / 100;
 	const ll = l / 100;
@@ -1050,7 +1244,471 @@ function hslToRgb(h, s, l) {
 		f(4)
 	];
 }
-var ACT = {
+var MAX_ROOMS = 32;
+var MIN_AREA = 24;
+var ALPHA_CAP = .28;
+function fillMaskSize(coarse) {
+	return coarse ? 256 : 384;
+}
+var FillStencil = class {
+	size = 0;
+	axis = /* @__PURE__ */ new Float64Array(0);
+	axisR = 0;
+	prepareAxis(radius) {
+		if (this.axis.length === this.size && this.axisR === radius) return;
+		this.axisR = radius;
+		const S = this.size;
+		const axis = new Float64Array(S);
+		const diam = 2 * radius;
+		for (let i = 0; i < S; i++) axis[i] = ((i + .5) / S - .5) * diam;
+		this.axis = axis;
+	}
+	radius = 1;
+	mask = /* @__PURE__ */ new Uint8Array(0);
+	wallId = /* @__PURE__ */ new Uint16Array(0);
+	labels = /* @__PURE__ */ new Uint16Array(0);
+	pix = /* @__PURE__ */ new Int32Array(0);
+	qq = /* @__PURE__ */ new Int32Array(0);
+	build(input) {
+		const size = input.size;
+		const radius = Math.max(8, input.radius);
+		const n = Math.max(1, input.n | 0);
+		this.ensure(size);
+		this.radius = radius;
+		this.prepareAxis(radius);
+		this.mask.fill(0);
+		this.wallId.fill(0);
+		this.labels.fill(0);
+		const rr = radius * radius;
+		const S = size;
+		const axis = this.axis;
+		for (let j = 0; j < S; j++) {
+			const yy = (axis[j] ?? 0) * (axis[j] ?? 0);
+			const row = j * S;
+			for (let i = 0; i < S; i++) if ((axis[i] ?? 0) * (axis[i] ?? 0) + yy > rr) this.mask[row + i] = 2;
+		}
+		const slice = Math.PI * 2 / n;
+		const cos = new Float64Array(n);
+		const sin = new Float64Array(n);
+		for (let i = 0; i < n; i++) {
+			cos[i] = Math.cos(i * slice);
+			sin[i] = Math.sin(i * slice);
+		}
+		const strokes = input.strokes;
+		for (let s = 0; s < strokes.length; s++) {
+			const stroke = strokes[s];
+			if (!stroke || stroke.len < 2) continue;
+			this.strokeWall(stroke, s + 1, n, input.mirrors, cos, sin);
+		}
+		if (input.wedges) {
+			for (let i = 0; i < n; i++) {
+				const ca = cos[i] ?? 1;
+				const sa = sin[i] ?? 0;
+				this.seg(0, 0, ca * radius * 1.2, sa * radius * 1.2, 0, true);
+			}
+			const mid = S / 2 | 0;
+			this.plot(mid, mid, 0, true);
+		}
+		const rooms = this.flood(input.wedges, radius, strokes);
+		return {
+			size,
+			radius,
+			n,
+			mirrors: input.mirrors,
+			labels: this.labels,
+			rooms
+		};
+	}
+	ensure(size) {
+		if (this.size === size && this.mask.length === size * size) return;
+		const n = size * size;
+		this.size = size;
+		this.mask = new Uint8Array(n);
+		this.wallId = new Uint16Array(n);
+		this.labels = new Uint16Array(n);
+		this.pix = new Int32Array(n);
+		this.qq = new Int32Array(n);
+	}
+	strokeWall(s, id, n, mirrors, cos, sin) {
+		const thick = s.width * (this.size / (2 * this.radius)) >= 2.4;
+		const x0 = s.xs[0] ?? 0;
+		const y0 = s.ys[0] ?? 0;
+		const x1 = s.xs[s.len - 1] ?? x0;
+		const y1 = s.ys[s.len - 1] ?? y0;
+		const gap = Math.hypot(x1 - x0, y1 - y0);
+		const close = gap > .4 && gap <= s.width * 1.35 + 2;
+		for (let i = 0; i < n; i++) {
+			const ca = cos[i] ?? 1;
+			const sa = sin[i] ?? 0;
+			this.poly(s, ca, sa, false, id, thick, close);
+			if (mirrors) this.poly(s, ca, sa, true, id, thick, close);
+		}
+	}
+	poly(s, ca, sa, mirror, id, thick, close) {
+		let px = 0;
+		let py = 0;
+		for (let i = 0; i < s.len; i++) {
+			const x = s.xs[i] ?? 0;
+			const y = s.ys[i] ?? 0;
+			const tx = mirror ? x * ca + y * sa : x * ca - y * sa;
+			const ty = mirror ? x * sa - y * ca : x * sa + y * ca;
+			if (i > 0) this.seg(px, py, tx, ty, id, thick);
+			px = tx;
+			py = ty;
+		}
+		if (close && s.len > 2) {
+			const x = s.xs[0] ?? 0;
+			const y = s.ys[0] ?? 0;
+			const tx = mirror ? x * ca + y * sa : x * ca - y * sa;
+			const ty = mirror ? x * sa - y * ca : x * sa + y * ca;
+			this.seg(px, py, tx, ty, id, thick);
+		}
+	}
+	seg(x0, y0, x1, y1, id, thick) {
+		const S = this.size;
+		const r = this.radius;
+		const clipped = clipBox((x0 / r + 1) * .5 * S, (y0 / r + 1) * .5 * S, (x1 / r + 1) * .5 * S, (y1 / r + 1) * .5 * S, -1, S);
+		if (!clipped) return;
+		this.supercover(clipped[0], clipped[1], clipped[2], clipped[3], id, thick);
+	}
+	supercover(x0, y0, x1, y1, id, thick) {
+		const S = this.size;
+		const mask = this.mask;
+		const wallId = this.wallId;
+		const stamp = (i, j) => {
+			if ((i | j) < 0 || i >= S || j >= S) return;
+			const k = j * S + i;
+			mask[k] = 1;
+			if (id > 0) wallId[k] = id;
+		};
+		let x = Math.round(x0);
+		let y = Math.round(y0);
+		const xe = Math.round(x1);
+		const ye = Math.round(y1);
+		const dx = Math.abs(xe - x);
+		const dy = Math.abs(ye - y);
+		const sx = x < xe ? 1 : -1;
+		const sy = y < ye ? 1 : -1;
+		let err = dx - dy;
+		const guard = dx + dy + 4;
+		for (let k = 0; k < guard; k++) {
+			stamp(x, y);
+			if (thick) {
+				stamp(x - 1, y);
+				stamp(x + 1, y);
+				stamp(x, y - 1);
+				stamp(x, y + 1);
+			}
+			if (x === xe && y === ye) return;
+			const e2 = 2 * err;
+			if (e2 > -dy && e2 < dx) {
+				stamp(x + sx, y);
+				stamp(x, y + sy);
+			}
+			if (e2 > -dy) {
+				err -= dy;
+				x += sx;
+			}
+			if (e2 < dx) {
+				err += dx;
+				y += sy;
+			}
+		}
+	}
+	plot(i, j, id, thick) {
+		this.stamp(i, j, id);
+		if (!thick) return;
+		this.stamp(i - 1, j, id);
+		this.stamp(i + 1, j, id);
+		this.stamp(i, j - 1, id);
+		this.stamp(i, j + 1, id);
+	}
+	stamp(i, j, id) {
+		const S = this.size;
+		if (i < 0 || j < 0 || i >= S || j >= S) return;
+		const k = j * S + i;
+		this.mask[k] = 1;
+		if (id > 0) this.wallId[k] = id;
+	}
+	flood(wedges, radius, strokes) {
+		const S = this.size;
+		const N = S * S;
+		const rim2 = radius * .972 * (radius * .972);
+		const kept = [];
+		let pcursor = 0;
+		const qq = this.qq;
+		const mask = this.mask;
+		const wallId = this.wallId;
+		const pix = this.pix;
+		const axis = this.axis;
+		let vein = 0;
+		const walk = (k, qh) => {
+			const m = mask[k];
+			if (m === 1) {
+				const id = wallId[k] ?? 0;
+				if (id > 0 && vein === 0) vein = id;
+				return qh;
+			}
+			if (m !== 0) return qh;
+			mask[k] = 3;
+			qq[qh] = k;
+			return qh + 1;
+		};
+		for (let start = 0; start < N; start++) {
+			if (mask[start] !== 0) continue;
+			let qh = 1;
+			let qt = 0;
+			qq[0] = start;
+			mask[start] = 3;
+			let area = 0;
+			let sx = 0;
+			let sy = 0;
+			vein = 0;
+			let sky = false;
+			const pixStart = pcursor;
+			let recording = true;
+			while (qt < qh) {
+				const k = qq[qt++] ?? 0;
+				const row = k / S | 0;
+				const col = k - row * S;
+				area++;
+				const wx = axis[col] ?? 0;
+				const wy = axis[row] ?? 0;
+				sx += wx;
+				sy += wy;
+				if (!wedges && wx * wx + wy * wy >= rim2) {
+					sky = true;
+					if (recording) {
+						recording = false;
+						pcursor = pixStart;
+					}
+				} else if (recording) pix[pcursor++] = k;
+				if (col > 0) qh = walk(k - 1, qh);
+				if (col + 1 < S) qh = walk(k + 1, qh);
+				if (row > 0) qh = walk(k - S, qh);
+				if (row + 1 < S) qh = walk(k + S, qh);
+			}
+			if (sky || area < MIN_AREA) {
+				pcursor = pixStart;
+				continue;
+			}
+			kept.push({
+				start: pixStart,
+				end: pcursor,
+				area,
+				sx,
+				sy,
+				vein
+			});
+		}
+		if (kept.length > MAX_ROOMS) {
+			kept.sort((a, b) => b.area - a.area);
+			kept.length = MAX_ROOMS;
+		}
+		const rooms = [];
+		for (let i = 0; i < kept.length; i++) {
+			const room = kept[i];
+			if (!room) continue;
+			const id = i + 1;
+			for (let p = room.start; p < room.end; p++) this.labels[pix[p] ?? 0] = id;
+			const cx = room.sx / room.area;
+			const cy = room.sy / room.area;
+			let veinX = cx;
+			let veinY = cy;
+			if (room.vein > 0) {
+				const stroke = strokes[room.vein - 1];
+				if (stroke && stroke.len > 0) {
+					const m = Math.max(0, (stroke.len >> 1) - 1);
+					veinX = stroke.xs[m] ?? cx;
+					veinY = stroke.ys[m] ?? cy;
+				}
+			}
+			rooms.push({
+				cx,
+				cy,
+				area: room.area,
+				veinX,
+				veinY,
+				seed: (room.vein * 1.7 + room.area * .013) % 19
+			});
+		}
+		return rooms;
+	}
+};
+function clipBox(x0, y0, x1, y1, min, max) {
+	let t0 = 0;
+	let t1 = 1;
+	const dx = x1 - x0;
+	const dy = y1 - y0;
+	const p = [
+		-dx,
+		dx,
+		-dy,
+		dy
+	];
+	const q = [
+		x0 - min,
+		max - x0,
+		y0 - min,
+		max - y0
+	];
+	for (let i = 0; i < 4; i++) {
+		const pi = p[i] ?? 0;
+		const qi = q[i] ?? 0;
+		if (pi === 0) {
+			if (qi < 0) return null;
+			continue;
+		}
+		const t = qi / pi;
+		if (pi < 0) {
+			if (t > t1) return null;
+			if (t > t0) t0 = t;
+		} else {
+			if (t < t0) return null;
+			if (t < t1) t1 = t;
+		}
+	}
+	if (t1 < t0) return null;
+	return [
+		x0 + t0 * dx,
+		y0 + t0 * dy,
+		x0 + t1 * dx,
+		y0 + t1 * dy
+	];
+}
+function fold(x, y, n, mirrors) {
+	const r = Math.hypot(x, y);
+	let ang = Math.atan2(y, x);
+	if (ang < 0) ang += Math.PI * 2;
+	const slice = Math.PI * 2 / Math.max(1, n);
+	let sector = Math.floor(ang / slice);
+	if (sector < 0) sector = 0;
+	if (sector >= n) sector = n - 1;
+	let local = ang - sector * slice;
+	if (mirrors && local > slice * .5) local = slice - local;
+	return {
+		x: Math.cos(local) * r,
+		y: Math.sin(local) * r,
+		sector,
+		r
+	};
+}
+function hashCell(x, y, radius) {
+	const g = Math.max(4, radius * .09);
+	const ix = Math.round(x / g);
+	const iy = Math.round(y / g);
+	let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263);
+	h = Math.imul(h ^ h >>> 13, 1274126177);
+	return (h >>> 0) % 6;
+}
+function sectorOf(x, y, n) {
+	let ang = Math.atan2(y, x);
+	if (ang < 0) ang += Math.PI * 2;
+	const sector = Math.floor(ang / (Math.PI * 2 / Math.max(1, n)));
+	if (sector < 0) return 0;
+	if (sector >= n) return n - 1;
+	return sector;
+}
+var paintLut = /* @__PURE__ */ new Float32Array(264);
+function paintFill(map, out, opts) {
+	out.fill(0);
+	const rooms = map.rooms;
+	if (rooms.length === 0) return;
+	const recipe = opts.recipe === "tide" && opts.reduced ? "wash" : opts.recipe;
+	const well = recipe === "well";
+	const pixWorld = 2 * map.radius / map.size;
+	const need = (rooms.length + 1) * 8;
+	if (paintLut.length < need) paintLut = new Float32Array(need);
+	const lut = paintLut;
+	for (let i = 0; i < rooms.length; i++) {
+		const room = rooms[i];
+		if (!room) continue;
+		const base = recipe === "vein" ? opts.sample(room.veinX, room.veinY) : recipe === "cloisonne" ? opts.sample(fold(room.cx, room.cy, map.n, map.mirrors).x, fold(room.cx, room.cy, map.n, map.mirrors).y) : opts.sample(room.cx, room.cy);
+		let h = base.h;
+		let s = base.s;
+		let l = Math.min(70, base.l);
+		let a = .24;
+		if (recipe === "vein") a = .26;
+		if (recipe === "tide") {
+			const act = Math.max(0, Math.min(1.2, opts.activity(room.seed)));
+			a = Math.min(ALPHA_CAP, .26 * Math.min(1, act));
+		}
+		if (recipe === "cloisonne") {
+			const folded = fold(room.cx, room.cy, map.n, map.mirrors);
+			h = (sectorOf(room.cx, room.cy, map.n) * (360 / map.n) + hashCell(folded.x, folded.y, map.radius) * 16 + Math.round(base.h / 36) * 6) % 360;
+			s = Math.min(86, Math.max(48, base.s));
+			l = 56;
+			a = .26;
+		}
+		if (recipe === "well") a = ALPHA_CAP;
+		a = Math.min(ALPHA_CAP, Math.max(0, a));
+		const [r, g, b] = hslToRgb$1(h, s, l);
+		const o = (i + 1) * 8;
+		lut[o] = r;
+		lut[o + 1] = g;
+		lut[o + 2] = b;
+		lut[o + 3] = a;
+		lut[o + 4] = room.cx;
+		lut[o + 5] = room.cy;
+		const roomR = Math.max(4, Math.sqrt(room.area / Math.PI) * pixWorld);
+		lut[o + 6] = 1 / (roomR * roomR);
+		lut[o + 7] = well ? 1 : 0;
+	}
+	const labels = map.labels;
+	const S = map.size;
+	const radius = map.radius;
+	const n = S * S;
+	for (let k = 0; k < n; k++) {
+		const id = labels[k] ?? 0;
+		if (id === 0) continue;
+		const o = id * 8;
+		let a = lut[o + 3] ?? 0;
+		let shade = 1;
+		if ((lut[o + 7] ?? 0) > 0) {
+			const col = k - (k / S | 0) * S;
+			const row = k / S | 0;
+			const wx = ((col + .5) / S - .5) * 2 * radius;
+			const wy = ((row + .5) / S - .5) * 2 * radius;
+			const dx = wx - (lut[o + 4] ?? 0);
+			const dy = wy - (lut[o + 5] ?? 0);
+			const inv = lut[o + 6] ?? 1;
+			const t = Math.min(1, (dx * dx + dy * dy) * inv);
+			a = Math.min(ALPHA_CAP, ALPHA_CAP * (1 - .62 * t));
+			shade = 1 - .22 * t;
+		}
+		if (a < .004) continue;
+		const p = k * 4;
+		out[p] = (lut[o] ?? 0) * shade * 255;
+		out[p + 1] = (lut[o + 1] ?? 0) * shade * 255;
+		out[p + 2] = (lut[o + 2] ?? 0) * shade * 255;
+		out[p + 3] = a * 255;
+	}
+}
+function hslToRgb(h, s, l, out) {
+	const hh = (h % 360 + 360) % 360;
+	const ss = s / 100;
+	const ll = l / 100;
+	const a = ss * Math.min(ll, 1 - ll);
+	const f = (n) => {
+		const k = (n + hh / 30) % 12;
+		return ll - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+	};
+	const r = f(0);
+	const g = f(8);
+	const b = f(4);
+	if (out) {
+		out[0] = r;
+		out[1] = g;
+		out[2] = b;
+		return out;
+	}
+	return [
+		r,
+		g,
+		b
+	];
+}
+var ACT$1 = {
 	steady: 0,
 	pulse: 1,
 	blink: 2,
@@ -1226,6 +1884,39 @@ void main() {
   frag = vec4(rgb, a);
 }
 `;
+var FILL_VS = `#version 300 es
+layout(location=0) in vec2 a_pos;
+uniform vec2 u_view;
+uniform vec2 u_origin;
+uniform float u_spin;
+uniform float u_radius;
+out vec2 v_uv;
+out vec2 v_local;
+void main() {
+  vec2 p = a_pos * u_radius;
+  float ca = cos(u_spin);
+  float sa = sin(u_spin);
+  vec2 r = vec2(p.x * ca - p.y * sa, p.x * sa + p.y * ca);
+  v_local = r;
+  vec2 s = vec2(r.x + u_origin.x, r.y + u_origin.y);
+  gl_Position = vec4(s.x / u_view.x * 2.0 - 1.0, 1.0 - s.y / u_view.y * 2.0, 0.0, 1.0);
+  v_uv = a_pos * 0.5 + 0.5;
+}
+`;
+var FILL_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+in vec2 v_local;
+uniform sampler2D u_tex;
+uniform float u_radius;
+out vec4 frag;
+void main() {
+  if (length(v_local) > u_radius) discard;
+  vec4 c = texture(u_tex, v_uv);
+  if (c.a < 0.004) discard;
+  frag = c;
+}
+`;
 function compile(gl, vsSrc, fsSrc) {
 	const vs = gl.createShader(gl.VERTEX_SHADER);
 	const fs = gl.createShader(gl.FRAGMENT_SHADER);
@@ -1267,10 +1958,12 @@ function webgl2Available() {
 		const p = compile(gl, STROKE_VS, STROKE_FS);
 		const q = compile(gl, POINT_VS, POINT_FS);
 		const o = compile(gl, OVERLAY_VS, OVERLAY_FS);
-		const ok = Boolean(p && q && o);
+		const f = compile(gl, FILL_VS, FILL_FS);
+		const ok = Boolean(p && q && o && f);
 		if (p) gl.deleteProgram(p);
 		if (q) gl.deleteProgram(q);
 		if (o) gl.deleteProgram(o);
+		if (f) gl.deleteProgram(f);
 		return ok;
 	} catch {
 		return false;
@@ -1281,6 +1974,10 @@ var KaleidoGL = class KaleidoGL {
 	strokeProg;
 	pointProg;
 	overlayProg;
+	fillProg;
+	fillTex;
+	fillSize = 0;
+	fillRev = -1;
 	strokeVao;
 	strokeBuf;
 	pointVao;
@@ -1295,12 +1992,15 @@ var KaleidoGL = class KaleidoGL {
 		this.strokeProg = programs[0];
 		this.pointProg = programs[1];
 		this.overlayProg = programs[2];
+		this.fillProg = programs[3];
 		const strokeVao = gl.createVertexArray();
 		const strokeBuf = gl.createBuffer();
 		const pointVao = gl.createVertexArray();
 		const pointBuf = gl.createBuffer();
 		const overlayVao = gl.createVertexArray();
-		if (!strokeVao || !strokeBuf || !pointVao || !pointBuf || !overlayVao) throw new Error("WebGL buffers failed");
+		const fillTex = gl.createTexture();
+		if (!strokeVao || !strokeBuf || !pointVao || !pointBuf || !overlayVao || !fillTex) throw new Error("WebGL buffers failed");
+		this.fillTex = fillTex;
 		this.strokeVao = strokeVao;
 		this.strokeBuf = strokeBuf;
 		this.pointVao = pointVao;
@@ -1369,12 +2069,14 @@ var KaleidoGL = class KaleidoGL {
 		const stroke = compile(gl, STROKE_VS, STROKE_FS);
 		const point = compile(gl, POINT_VS, POINT_FS);
 		const overlay = compile(gl, OVERLAY_VS, OVERLAY_FS);
-		if (!stroke || !point || !overlay) return null;
+		const fill = compile(gl, FILL_VS, FILL_FS);
+		if (!stroke || !point || !overlay || !fill) return null;
 		try {
 			return new KaleidoGL(gl, [
 				stroke,
 				point,
-				overlay
+				overlay,
+				fill
 			]);
 		} catch {
 			return null;
@@ -1392,11 +2094,42 @@ var KaleidoGL = class KaleidoGL {
 		const spin = frame.spin;
 		const origin = [frame.cx, frame.cy];
 		const view = [w, h];
-		const activity = ACT[frame.activity] ?? 1;
+		const activity = ACT$1[frame.activity] ?? 1;
 		const instances = frame.n * (frame.mirrors ? 2 : 1);
+		this.drawFill(frame, view, origin, spin);
 		this.drawIcons(frame, view, origin, spin);
 		this.drawStrokes(frame, view, origin, spin, activity, instances);
 		this.drawOverlay(frame, view, origin);
+	}
+	drawFill(frame, view, origin, spin) {
+		const fill = frame.fill;
+		if (!fill || fill.size < 2) return;
+		const gl = this.gl;
+		gl.bindTexture(gl.TEXTURE_2D, this.fillTex);
+		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+		if (this.fillSize !== fill.size) {
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, fill.size, fill.size, 0, gl.RGBA, gl.UNSIGNED_BYTE, fill.rgba);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+			this.fillSize = fill.size;
+			this.fillRev = fill.rev;
+		} else if (this.fillRev !== fill.rev) {
+			gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, fill.size, fill.size, gl.RGBA, gl.UNSIGNED_BYTE, fill.rgba);
+			this.fillRev = fill.rev;
+		}
+		const prog = this.fillProg;
+		gl.useProgram(prog);
+		gl.bindVertexArray(this.overlayVao);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, this.fillTex);
+		gl.uniform1i(loc(gl, prog, "u_tex"), 0);
+		gl.uniform2f(loc(gl, prog, "u_view"), view[0], view[1]);
+		gl.uniform2f(loc(gl, prog, "u_origin"), origin[0], origin[1]);
+		gl.uniform1f(loc(gl, prog, "u_spin"), spin);
+		gl.uniform1f(loc(gl, prog, "u_radius"), frame.radius);
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 	}
 	drawStrokes(frame, view, origin, spin, activity, instances) {
 		const gl = this.gl;
@@ -1556,6 +2289,285 @@ var KaleidoGL = class KaleidoGL {
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 	}
 };
+function pickMime() {
+	for (const type of [
+		"video/webm;codecs=vp9",
+		"video/webm;codecs=vp8",
+		"video/webm",
+		"video/mp4"
+	]) if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) return type;
+	return "";
+}
+function canRecord() {
+	if (typeof window === "undefined") return false;
+	if (typeof MediaRecorder === "undefined") return false;
+	return typeof HTMLCanvasElement.prototype.captureStream === "function" && pickMime() !== "";
+}
+function clipExtension() {
+	return pickMime().includes("mp4") ? "mp4" : "webm";
+}
+function clipFilename(mime, when = /* @__PURE__ */ new Date()) {
+	return `kaleido-clip-${when.toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${mime.includes("mp4") ? "mp4" : "webm"}`;
+}
+var ClipRecorder = class {
+	recorder = null;
+	chunks = [];
+	raf = 0;
+	startedAt = 0;
+	maxMs = 15e3;
+	handlers = {};
+	mime = "";
+	stream = null;
+	settled = false;
+	get active() {
+		return this.recorder !== null && this.recorder.state === "recording";
+	}
+	start(canvas, handlers = {}, seconds = 15) {
+		if (!canRecord()) {
+			handlers.onStop?.(null);
+			return false;
+		}
+		if (this.active) this.stop();
+		const capture = canvas.captureStream(30);
+		this.stream = capture;
+		this.mime = pickMime();
+		this.chunks = [];
+		this.handlers = handlers;
+		this.maxMs = seconds * 1e3;
+		this.startedAt = performance.now();
+		this.settled = false;
+		let recorder;
+		try {
+			recorder = new MediaRecorder(capture, {
+				mimeType: this.mime,
+				videoBitsPerSecond: 5e6
+			});
+		} catch {
+			handlers.onStop?.(null);
+			this.cleanupStream();
+			return false;
+		}
+		recorder.ondataavailable = (event) => {
+			if (event.data && event.data.size > 0) this.chunks.push(event.data);
+		};
+		recorder.onerror = () => {
+			this.finish(null);
+		};
+		recorder.onstop = () => {
+			const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mime || "video/webm" }) : null;
+			this.finish(blob);
+		};
+		this.recorder = recorder;
+		recorder.start(200);
+		this.tick();
+		return true;
+	}
+	stop() {
+		const recorder = this.recorder;
+		if (!recorder || recorder.state !== "recording") return;
+		try {
+			recorder.requestData();
+		} catch {}
+		try {
+			recorder.stop();
+		} catch {
+			this.finish(null);
+		}
+	}
+	tick = () => {
+		if (!this.active) return;
+		const elapsed = performance.now() - this.startedAt;
+		this.handlers.onTick?.(elapsed / 1e3, this.maxMs / 1e3);
+		if (elapsed >= this.maxMs) {
+			this.stop();
+			return;
+		}
+		this.raf = requestAnimationFrame(this.tick);
+	};
+	finish(blob) {
+		if (this.settled) return;
+		this.settled = true;
+		cancelAnimationFrame(this.raf);
+		const onStop = this.handlers.onStop;
+		this.handlers = {};
+		this.recorder = null;
+		this.chunks = [];
+		this.cleanupStream();
+		onStop?.(blob);
+	}
+	cleanupStream() {
+		this.stream?.getTracks().forEach((track) => track.stop());
+		this.stream = null;
+	}
+};
+function savePicker() {
+	if (typeof window === "undefined" || window.parent !== window) return null;
+	const picker = window.showSaveFilePicker;
+	return typeof picker === "function" ? picker : null;
+}
+function pickerTypes(ext) {
+	return {
+		description: ext === "mp4" ? "MP4 video" : ext === "gif" ? "GIF" : ext === "png" ? "PNG image" : "WebM video",
+		accept: { [ext === "mp4" ? "video/mp4" : ext === "gif" ? "image/gif" : ext === "png" ? "image/png" : "video/webm"]: [`.${ext}`] }
+	};
+}
+/** Ask where a file should go. `later` if this browser cannot show a save dialog. */
+async function chooseSaveFile(filename, ext) {
+	const picker = savePicker();
+	if (!picker) return "later";
+	const spec = pickerTypes(ext);
+	try {
+		return await picker({
+			suggestedName: filename,
+			types: [{
+				description: spec.description,
+				accept: spec.accept
+			}]
+		});
+	} catch (err) {
+		if (isAbort(err)) return "cancel";
+		return "later";
+	}
+}
+function chooseClipFile() {
+	const ext = clipExtension();
+	return chooseSaveFile(`kaleido-clip.${ext}`, ext);
+}
+async function writeClipFile(handle, blob) {
+	const writable = await handle.createWritable();
+	await writable.write(blob);
+	await writable.close();
+}
+function isAbort(err) {
+	return err instanceof DOMException && err.name === "AbortError";
+}
+/**
+* Save a finished clip from a fresh click.
+* Share sheet on a phone, a save dialog on a desktop tab, otherwise a file download.
+* AbortError means the person dismissed that dialog — the clip is still held.
+*/
+async function saveClip(blob, filename) {
+	const file = new File([blob], filename, { type: blob.type || "video/webm" });
+	const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+	const nav = typeof navigator !== "undefined" ? navigator : null;
+	if (coarse && nav && typeof nav.share === "function" && nav.canShare?.({ files: [file] })) try {
+		await nav.share({
+			files: [file],
+			title: "Kaleido"
+		});
+		return "shared";
+	} catch (err) {
+		if (isAbort(err)) throw err;
+	}
+	const picker = savePicker();
+	if (picker) {
+		const spec = pickerTypes(filename.endsWith(".gif") ? "gif" : filename.endsWith(".png") ? "png" : filename.endsWith(".mp4") ? "mp4" : "webm");
+		try {
+			await writeClipFile(await picker({
+				suggestedName: filename,
+				types: [{
+					description: spec.description,
+					accept: spec.accept
+				}]
+			}), blob);
+			return "saved";
+		} catch (err) {
+			if (isAbort(err)) throw err;
+		}
+	}
+	downloadBlob(blob, filename);
+	return "downloaded";
+}
+function downloadBlob(blob, filename) {
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = filename;
+	a.rel = "noopener";
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	window.setTimeout(() => URL.revokeObjectURL(url), 6e4);
+}
+function stampedName(prefix, ext) {
+	return `${prefix}-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}${ext.startsWith(".") ? ext : `.${ext}`}`;
+}
+/** Best video type this browser can actually record. */
+function videoExportMime() {
+	const types = [
+		"video/mp4;codecs=avc1",
+		"video/mp4",
+		"video/webm;codecs=vp9",
+		"video/webm"
+	];
+	if (typeof MediaRecorder === "undefined") return {
+		mime: "video/webm",
+		ext: "webm"
+	};
+	for (const mime of types) try {
+		if (MediaRecorder.isTypeSupported(mime)) return {
+			mime,
+			ext: mime.includes("mp4") ? "mp4" : "webm"
+		};
+	} catch {}
+	return {
+		mime: "video/webm",
+		ext: "webm"
+	};
+}
+/** Record the live canvas for a few seconds. Independent of the main clip recorder. */
+function recordCanvas(canvas, seconds, mime) {
+	const capture = canvas.captureStream;
+	if (typeof capture !== "function" || typeof MediaRecorder === "undefined") return Promise.reject(/* @__PURE__ */ new Error("Recording isn’t available"));
+	const stream = capture.call(canvas, 30);
+	return new Promise((resolve, reject) => {
+		let settled = false;
+		const finish = (blob, err) => {
+			if (settled) return;
+			settled = true;
+			stream.getTracks().forEach((track) => track.stop());
+			if (blob && blob.size > 0) resolve(blob);
+			else reject(err ?? /* @__PURE__ */ new Error("Empty video"));
+		};
+		let recorder;
+		try {
+			recorder = new MediaRecorder(stream, {
+				mimeType: mime,
+				videoBitsPerSecond: 4e6
+			});
+		} catch (err) {
+			finish(null, err instanceof Error ? err : /* @__PURE__ */ new Error("Could not record"));
+			return;
+		}
+		const chunks = [];
+		recorder.ondataavailable = (event) => {
+			if (event.data && event.data.size > 0) chunks.push(event.data);
+		};
+		recorder.onerror = () => finish(null, /* @__PURE__ */ new Error("Recording failed"));
+		recorder.onstop = () => {
+			const blob = chunks.length > 0 ? new Blob(chunks, { type: mime || "video/webm" }) : null;
+			finish(blob, blob ? void 0 : /* @__PURE__ */ new Error("Empty video"));
+		};
+		try {
+			recorder.start(200);
+		} catch (err) {
+			finish(null, err instanceof Error ? err : /* @__PURE__ */ new Error("Recording failed"));
+			return;
+		}
+		window.setTimeout(() => {
+			try {
+				if (recorder.state === "recording") {
+					try {
+						recorder.requestData();
+					} catch {}
+					recorder.stop();
+				}
+			} catch (err) {
+				finish(null, err instanceof Error ? err : /* @__PURE__ */ new Error("Recording failed"));
+			}
+		}, Math.max(250, seconds * 1e3));
+	});
+}
 var BG = "rgb(8, 8, 11)";
 var TAU = Math.PI * 2;
 var ARROWS = /* @__PURE__ */ new Set([
@@ -1572,104 +2584,106 @@ var WASD = /* @__PURE__ */ new Set([
 ]);
 var MAX_PTS = 72;
 var FIELD_N = 24;
+var COLOR = {
+	h: 0,
+	s: 0,
+	l: 0,
+	a: 1
+};
+var ACT = {
+	a: 1,
+	h: 0,
+	w: 1
+};
 function colorAt(mode, motion, hue, time, x, y, radius) {
 	const u = Math.min(1, Math.hypot(x, y) / Math.max(1, radius));
 	const ang = Math.atan2(y, x);
 	const t = motion === "hold" ? 0 : time;
 	const off = hue;
+	COLOR.a = 1;
 	switch (mode) {
-		case "spectrum": return {
-			h: (t * 46 + u * 150 + off) % 360,
-			s: 84,
-			l: 58,
-			a: 1
-		};
-		case "prism": return {
-			h: ((ang * 180 / Math.PI + 360 + t * 10 + off) % 360 + 360) % 360,
-			s: 80,
-			l: 60,
-			a: 1
-		};
-		case "aurora": return {
-			h: (150 + Math.sin(t * .65 + u * 5) * 78 + off + 360) % 360,
-			s: 74,
-			l: 56,
-			a: 1
-		};
-		case "ember": return {
-			h: (16 + Math.sin(t * 1.05 + u * 6) * 16 + off + 360) % 360,
-			s: 90,
-			l: 56,
-			a: 1
-		};
-		case "ice": return {
-			h: (196 + Math.sin(t * .7 + u * 4) * 24 + off + 360) % 360,
-			s: 70,
-			l: 62,
-			a: 1
-		};
-		case "pearl": return {
-			h: (36 + Math.sin(t * .5) * 10 + off + 360) % 360,
-			s: 16,
-			l: 78,
-			a: 1
-		};
+		case "spectrum":
+			COLOR.h = (t * 46 + u * 150 + off) % 360;
+			COLOR.s = 84;
+			COLOR.l = 58;
+			break;
+		case "prism":
+			COLOR.h = ((ang * 180 / Math.PI + 360 + t * 10 + off) % 360 + 360) % 360;
+			COLOR.s = 80;
+			COLOR.l = 60;
+			break;
+		case "aurora":
+			COLOR.h = (150 + Math.sin(t * .65 + u * 5) * 78 + off + 360) % 360;
+			COLOR.s = 74;
+			COLOR.l = 56;
+			break;
+		case "ember":
+			COLOR.h = (16 + Math.sin(t * 1.05 + u * 6) * 16 + off + 360) % 360;
+			COLOR.s = 90;
+			COLOR.l = 56;
+			break;
+		case "ice":
+			COLOR.h = (196 + Math.sin(t * .7 + u * 4) * 24 + off + 360) % 360;
+			COLOR.s = 70;
+			COLOR.l = 62;
+			break;
+		case "pearl":
+			COLOR.h = (36 + Math.sin(t * .5) * 10 + off + 360) % 360;
+			COLOR.s = 16;
+			COLOR.l = 78;
 	}
+	return COLOR;
 }
 function activityAt(kind, time, along, seed, boost) {
 	const lift = 1 + .55 * boost;
 	switch (kind) {
-		case "steady": return {
-			a: (.78 + .1 * Math.sin(time * 1.6 + seed)) * lift,
-			h: 0,
-			w: 1
-		};
+		case "steady":
+			ACT.a = (.78 + .1 * Math.sin(time * 1.6 + seed)) * lift;
+			ACT.h = 0;
+			ACT.w = 1;
+			break;
 		case "pulse": {
 			const wave = .5 + .5 * Math.sin(time * 2.8 + seed);
-			return {
-				a: (.22 + .78 * wave) * lift,
-				h: 0,
-				w: .82 + .28 * wave + .2 * boost
-			};
+			ACT.a = (.22 + .78 * wave) * lift;
+			ACT.h = 0;
+			ACT.w = .82 + .28 * wave + .2 * boost;
+			break;
 		}
 		case "blink": {
 			const beat = (time * 2.15 + seed * .15) % 1.15;
 			const on = beat < .62 || beat > .74 && beat < .88;
-			return {
-				a: (on ? .95 : .05) * lift,
-				h: 0,
-				w: on ? 1 : .7
-			};
+			ACT.a = (on ? .95 : .05) * lift;
+			ACT.h = 0;
+			ACT.w = on ? 1 : .7;
+			break;
 		}
 		case "chase": {
 			const head = (time * .62 + seed) % 1;
 			const d = Math.abs(along - head);
 			const prox = Math.min(d, 1 - d);
 			const hot = prox < .1;
-			return {
-				a: (hot ? 1 : .1 + .16 * (1 - prox)) * lift,
-				h: along * 50,
-				w: hot ? 1.45 : .7
-			};
+			ACT.a = (hot ? 1 : .1 + .16 * (1 - prox)) * lift;
+			ACT.h = along * 50;
+			ACT.w = hot ? 1.45 : .7;
+			break;
 		}
 		case "firefly": {
 			const tw = Math.sin(time * 6.8 + along * 22 + seed * 11);
 			const lit = tw > .42;
-			return {
-				a: (lit ? .2 + (tw - .42) * 1.6 : .08) * lift,
-				h: lit ? 24 : 0,
-				w: lit ? 1.25 : .72
-			};
+			ACT.a = (lit ? .2 + (tw - .42) * 1.6 : .08) * lift;
+			ACT.h = lit ? 24 : 0;
+			ACT.w = lit ? 1.25 : .72;
+			break;
 		}
 		case "strobe": {
 			const on = Math.sin(time * 16 + seed * 4) > .15;
-			return {
-				a: (on ? 1 : .04) * lift,
-				h: on ? 10 : 0,
-				w: on ? 1.12 : .75
-			};
+			ACT.a = (on ? 1 : .04) * lift;
+			ACT.h = on ? 10 : 0;
+			ACT.w = on ? 1.12 : .75;
+			break;
 		}
 	}
+	return ACT;
 }
 function prefersReducedMotion() {
 	return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1744,6 +2758,19 @@ var KaleidoEngine = class {
 	menuOpen = false;
 	icons = [];
 	iconK = 0;
+	stencil = null;
+	fillMap = null;
+	fillSig = "";
+	fillPaintKey = "";
+	fillRGBA = null;
+	fillCanvas = null;
+	fillCtx = null;
+	fillImage = null;
+	fillRooms = 0;
+	fillRev = 0;
+	fillBlitRev = -1;
+	iconPool = [];
+	strokePool = [];
 	constructor(display, root, settings) {
 		this.display = display;
 		this.root = root;
@@ -1831,6 +2858,14 @@ var KaleidoEngine = class {
 	canvas() {
 		return this.display;
 	}
+	/** Lens center and radius in canvas pixels, for cropping an export. */
+	lensPixels() {
+		return {
+			cx: this.cx,
+			cy: this.cy,
+			radius: this.radius
+		};
+	}
 	expose() {
 		const el = this.display;
 		el.__kaleido = { clocks: () => ({
@@ -1846,6 +2881,9 @@ var KaleidoEngine = class {
 			kind: this.settings.iconKind,
 			strokeN: this.strokes.length,
 			renderer: this.gl ? "gl" : "2d",
+			fill: this.settings.fillMode,
+			recipe: this.settings.fillRecipe,
+			rooms: this.fillRooms,
 			layout: this.getLayout()
 		}) };
 	}
@@ -1921,15 +2959,7 @@ var KaleidoEngine = class {
 	}
 	exportPng() {
 		return this.exportBlob().then((blob) => {
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement("a");
-			const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-			a.href = url;
-			a.download = `kaleido-${stamp}.png`;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-			URL.revokeObjectURL(url);
+			downloadBlob(blob, `kaleido-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`);
 		});
 	}
 	exportBlob() {
@@ -2560,6 +3590,130 @@ var KaleidoEngine = class {
 		}
 		ctx.restore();
 	}
+	fillSignature(size) {
+		const q = 2 * Math.max(8, this.radius) / Math.max(8, size);
+		const qi = (v) => Math.round(v / q);
+		let count = 0;
+		let width = 0;
+		let h = 2166136261;
+		for (const s of this.strokes) {
+			if (s.len < 2 || this.fadeOf(s) < .15) continue;
+			count++;
+			width += s.width;
+			let px = qi(s.xs[0] ?? 0);
+			let py = qi(s.ys[0] ?? 0);
+			h = Math.imul(h ^ px + 4096, 16777619);
+			h = Math.imul(h ^ py + 4096, 16777619);
+			for (let i = 1; i < s.len; i++) {
+				const x = qi(s.xs[i] ?? 0);
+				const y = qi(s.ys[i] ?? 0);
+				const dx = x - px;
+				const dy = y - py;
+				if (dx === 0 && dy === 0) continue;
+				h = Math.imul(h ^ dx + 256, 16777619);
+				h = Math.imul(h ^ dy + 256, 16777619);
+				px = x;
+				py = y;
+			}
+		}
+		const bucket = Math.round(this.radius / 12);
+		return `${this.settings.fillMode}|${size}|${this.settings.segments}|${this.settings.pathMode}|${bucket}|${count}|${h >>> 0}|${Math.round(width * 4)}`;
+	}
+	syncFill() {
+		if (this.settings.fillMode === "off") {
+			this.fillRooms = 0;
+			this.fillPaintKey = "";
+			return null;
+		}
+		const size = fillMaskSize(isCoarse());
+		const sig = this.fillSignature(size);
+		if (sig !== this.fillSig) {
+			this.fillSig = sig;
+			this.fillPaintKey = "";
+			if (!this.stencil) this.stencil = new FillStencil();
+			const strokes = [];
+			for (const s of this.strokes) {
+				if (s.len < 2 || this.fadeOf(s) < .15) continue;
+				strokes.push({
+					xs: s.xs,
+					ys: s.ys,
+					len: s.len,
+					width: Math.max(1.5, s.width * .22 * this.dpr)
+				});
+			}
+			try {
+				this.fillMap = this.stencil.build({
+					size,
+					radius: this.radius,
+					n: this.settings.segments,
+					mirrors: this.mirrors(),
+					wedges: this.settings.fillMode === "wedges",
+					strokes
+				});
+			} catch {
+				this.fillMap = null;
+				this.fillRooms = 0;
+				return null;
+			}
+		}
+		const map = this.fillMap;
+		if (!map || map.rooms.length === 0) {
+			this.fillRooms = 0;
+			return null;
+		}
+		this.fillRooms = map.rooms.length;
+		const recipe = this.settings.fillRecipe;
+		const boost = this.idleBoost();
+		const key = `${sig}|${recipe}|${this.settings.colorMode}|${this.settings.colorMotion}|${this.settings.hue}|${this.settings.lightActivity}|${this.lightTime.toFixed(2)}|${boost.toFixed(2)}|${this.reduced ? 1 : 0}`;
+		const need = size * size * 4;
+		if (!this.fillRGBA || this.fillRGBA.length !== need) {
+			this.fillRGBA = new Uint8ClampedArray(need);
+			this.fillPaintKey = "";
+		}
+		if (key !== this.fillPaintKey && this.fillRGBA) {
+			this.fillPaintKey = key;
+			paintFill(map, this.fillRGBA, {
+				recipe,
+				reduced: this.reduced,
+				sample: (x, y) => colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue, this.lightTime, x, y, this.radius),
+				activity: (seed) => activityAt(this.settings.lightActivity, this.lightTime, .5, seed, boost).a
+			});
+			this.fillRev++;
+		}
+		return this.fillRGBA ? {
+			rgba: this.fillRGBA,
+			size,
+			rev: this.fillRev
+		} : null;
+	}
+	drawFill(ctx) {
+		const fill = this.syncFill();
+		if (!fill) return;
+		if (!this.fillCanvas) {
+			this.fillCanvas = document.createElement("canvas");
+			this.fillCtx = this.fillCanvas.getContext("2d", { alpha: true });
+		}
+		const canvas = this.fillCanvas;
+		const ictx = this.fillCtx;
+		if (!ictx) return;
+		if (canvas.width !== fill.size || canvas.height !== fill.size) {
+			canvas.width = fill.size;
+			canvas.height = fill.size;
+			this.fillImage = null;
+		}
+		if (!this.fillImage || this.fillImage.width !== fill.size) {
+			this.fillImage = ictx.createImageData(fill.size, fill.size);
+			this.fillBlitRev = -1;
+		}
+		if (this.fillBlitRev !== fill.rev) {
+			this.fillImage.data.set(fill.rgba);
+			ictx.putImageData(this.fillImage, 0, 0);
+			this.fillBlitRev = fill.rev;
+		}
+		ctx.imageSmoothingEnabled = true;
+		const r = this.radius;
+		ctx.drawImage(canvas, -r, -r, r * 2, r * 2);
+	}
 	present() {
 		if (this.gl) {
 			this.presentGL();
@@ -2572,42 +3726,83 @@ var KaleidoEngine = class {
 		if (!w || !h || !Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius < 1) return;
 		const boost = this.idleBoost();
 		const scale = radius * .92;
-		const icons = this.icons.map((p) => {
+		const icons = this.iconPool;
+		const iconN = this.icons.length;
+		while (icons.length < iconN) icons.push({
+			x: 0,
+			y: 0,
+			px: 0,
+			py: 0,
+			qx: 0,
+			qy: 0,
+			seed: 0,
+			rgb: [
+				0,
+				0,
+				0
+			],
+			alpha: 0,
+			size: 1
+		});
+		if (icons.length !== iconN) icons.length = iconN;
+		for (let i = 0; i < iconN; i++) {
+			const p = this.icons[i];
+			const ic = icons[i];
+			if (!p || !ic) continue;
 			const x = p.x * scale;
 			const y = p.y * scale;
 			const ang = Math.atan2(p.y - p.py, p.x - p.px);
 			const color = colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue + ang * 180 / Math.PI, this.lightTime, x, y, this.radius);
+			const hue = color.h;
+			const sat = color.s;
+			const lit = color.l;
 			const act = activityAt(this.settings.lightActivity, this.lightTime, p.seed % 1, p.seed, boost);
-			return {
-				x,
-				y,
-				px: p.px * scale,
-				py: p.py * scale,
-				qx: p.qx * scale,
-				qy: p.qy * scale,
-				seed: p.seed,
-				rgb: hslToRgb(color.h, color.s, color.l),
-				alpha: .72 * act.a,
-				size: Math.max(1.2, 2.3 * this.dpr * act.w)
-			};
-		});
-		const strokes = [];
+			ic.x = x;
+			ic.y = y;
+			ic.px = p.px * scale;
+			ic.py = p.py * scale;
+			ic.qx = p.qx * scale;
+			ic.qy = p.qy * scale;
+			ic.seed = p.seed;
+			hslToRgb(hue, sat, lit, ic.rgb);
+			ic.alpha = .72 * act.a;
+			ic.size = Math.max(1.2, 2.3 * this.dpr * act.w);
+		}
+		const strokes = this.strokePool;
+		let strokeN = 0;
 		for (const s of this.strokes) {
 			if (s.len < 2) continue;
 			const fade = this.fadeOf(s);
 			if (fade < .02) continue;
+			let slot = strokes[strokeN];
+			if (!slot) {
+				slot = {
+					xs: s.xs,
+					ys: s.ys,
+					len: s.len,
+					width: s.width,
+					seed: s.seed,
+					fade,
+					rgb: [
+						0,
+						0,
+						0
+					]
+				};
+				strokes[strokeN] = slot;
+			}
 			const mid = Math.max(0, (s.len >> 1) - 1);
 			const color = colorAt(this.settings.colorMode, this.settings.colorMotion, this.settings.hue, this.lightTime, s.xs[mid] ?? 0, s.ys[mid] ?? 0, this.radius);
-			strokes.push({
-				xs: s.xs,
-				ys: s.ys,
-				len: s.len,
-				width: s.width,
-				seed: s.seed,
-				fade,
-				rgb: hslToRgb(color.h, color.s, Math.min(78, color.l + 8))
-			});
+			slot.xs = s.xs;
+			slot.ys = s.ys;
+			slot.len = s.len;
+			slot.width = s.width;
+			slot.seed = s.seed;
+			slot.fade = fade;
+			hslToRgb(color.h, color.s, Math.min(78, color.l + 8), slot.rgb);
+			strokeN++;
 		}
+		if (strokes.length !== strokeN) strokes.length = strokeN;
 		const showKey = this.keyInited && [...this.keys].some((code) => WASD.has(code) || ARROWS.has(code));
 		const frame = {
 			width: w,
@@ -2630,7 +3825,8 @@ var KaleidoEngine = class {
 			} : null,
 			strokes,
 			icons,
-			iconRing: this.settings.iconKind === "ring"
+			iconRing: this.settings.iconKind === "ring",
+			fill: this.syncFill()
 		};
 		this.gl?.draw(frame);
 	}
@@ -2653,6 +3849,7 @@ var KaleidoEngine = class {
 		ctx.lineCap = "round";
 		ctx.lineJoin = "round";
 		ctx.globalCompositeOperation = "source-over";
+		this.drawFill(ctx);
 		this.drawIcons(ctx);
 		const n = this.settings.segments;
 		const mirrors = this.mirrors();
@@ -2807,112 +4004,95 @@ var KaleidoEngine = class {
 		this.present();
 	};
 };
-function pickMime() {
-	for (const type of [
-		"video/webm;codecs=vp9",
-		"video/webm;codecs=vp8",
-		"video/webm",
-		"video/mp4"
-	]) if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) return type;
-	return "";
-}
-function canRecord() {
-	if (typeof window === "undefined") return false;
-	if (typeof MediaRecorder === "undefined") return false;
-	return typeof HTMLCanvasElement.prototype.captureStream === "function" && pickMime() !== "";
-}
-var ClipRecorder = class {
-	recorder = null;
-	chunks = [];
-	raf = 0;
-	startedAt = 0;
-	maxMs = 15e3;
-	handlers = {};
-	mime = "";
-	stream = null;
-	get active() {
-		return this.recorder !== null && this.recorder.state === "recording";
-	}
-	start(canvas, handlers = {}, seconds = 15) {
-		if (!canRecord()) {
-			handlers.onStop?.(null);
-			return false;
-		}
-		if (this.active) this.stop();
-		const capture = canvas.captureStream(30);
-		this.stream = capture;
-		this.mime = pickMime();
-		this.chunks = [];
-		this.handlers = handlers;
-		this.maxMs = seconds * 1e3;
-		this.startedAt = performance.now();
-		let recorder;
-		try {
-			recorder = new MediaRecorder(capture, {
-				mimeType: this.mime,
-				videoBitsPerSecond: 5e6
-			});
-		} catch {
-			handlers.onStop?.(null);
-			this.cleanupStream();
-			return false;
-		}
-		recorder.ondataavailable = (event) => {
-			if (event.data && event.data.size > 0) this.chunks.push(event.data);
-		};
-		recorder.onerror = () => {
-			this.finish(null);
-		};
-		recorder.onstop = () => {
-			const blob = this.chunks.length > 0 ? new Blob(this.chunks, { type: this.mime || "video/webm" }) : null;
-			this.finish(blob);
-		};
-		this.recorder = recorder;
-		recorder.start(200);
-		this.tick();
-		return true;
-	}
-	stop() {
-		if (!this.recorder) return;
-		if (this.recorder.state === "recording") try {
-			this.recorder.stop();
-		} catch {
-			this.finish(null);
-		}
-	}
-	tick = () => {
-		if (!this.active) return;
-		const elapsed = performance.now() - this.startedAt;
-		this.handlers.onTick?.(elapsed / 1e3, this.maxMs / 1e3);
-		if (elapsed >= this.maxMs) {
-			this.stop();
-			return;
-		}
-		this.raf = requestAnimationFrame(this.tick);
+var GIF_FPS = 8;
+var GIF_EDGE = 360;
+var VIDEO_EDGE = 720;
+var scratch = null;
+function lensRect(canvas, lens) {
+	if (!lens || lens.radius < 8) return null;
+	const pad = Math.max(2, lens.radius * .06);
+	const side = Math.min(canvas.width, canvas.height, (lens.radius + pad) * 2);
+	if (side < 8) return null;
+	return {
+		x: Math.max(0, Math.min(canvas.width - side, lens.cx - side / 2)),
+		y: Math.max(0, Math.min(canvas.height - side, lens.cy - side / 2)),
+		side
 	};
-	finish(blob) {
-		cancelAnimationFrame(this.raf);
-		const onStop = this.handlers.onStop;
-		this.handlers = {};
-		this.recorder = null;
-		this.chunks = [];
-		this.cleanupStream();
-		onStop?.(blob);
+}
+function snap(source, lens, edge) {
+	const box = lensRect(source, lens);
+	const side = edge - edge % 2;
+	if (!scratch) scratch = document.createElement("canvas");
+	if (scratch.width !== side) scratch.width = side;
+	if (scratch.height !== side) scratch.height = side;
+	const ctx = scratch.getContext("2d", { willReadFrequently: true });
+	if (!ctx) throw new Error("Could not read the lens");
+	if (box) ctx.drawImage(source, box.x, box.y, box.side, box.side, 0, 0, side, side);
+	else ctx.drawImage(source, 0, 0, side, side);
+	return ctx.getImageData(0, 0, side, side);
+}
+function encodeGif(frames, delayMs) {
+	const gif = ct();
+	return frames.reduce(async (prev, frame) => {
+		await prev;
+		const palette = H(frame.data, 256);
+		const index = nt(frame.data, palette);
+		gif.writeFrame(index, frame.width, frame.height, {
+			palette,
+			delay: delayMs
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}, Promise.resolve()).then(() => {
+		gif.finish();
+		return new Blob([gif.bytes()], { type: "image/gif" });
+	});
+}
+/** A short looping GIF of the lens, not the empty margin around it. */
+async function captureGif(canvas, lens) {
+	if (canvas.width < 2 || canvas.height < 2) throw new Error("Lens isn’t ready");
+	const count = Math.round(24);
+	const gap = 1e3 / GIF_FPS;
+	const frames = [];
+	let last = 0;
+	while (frames.length < count) {
+		await new Promise((resolve) => {
+			requestAnimationFrame(() => resolve());
+		});
+		const now = performance.now();
+		if (frames.length === 0 || now - last >= 120) {
+			frames.push(snap(canvas, lens(), GIF_EDGE));
+			last = now;
+		}
 	}
-	cleanupStream() {
-		this.stream?.getTracks().forEach((track) => track.stop());
-		this.stream = null;
+	const blob = await encodeGif(frames, gap);
+	if (blob.size < 32) throw new Error("Empty GIF");
+	return blob;
+}
+/** MP4 (or WebM) of the lens, cropped square so the folds fill the frame. */
+async function captureVideo(canvas, lens, seconds, mime) {
+	const edge = VIDEO_EDGE;
+	const out = document.createElement("canvas");
+	out.width = edge;
+	out.height = edge;
+	const ctx = out.getContext("2d");
+	if (!ctx) throw new Error("Could not record");
+	let live = true;
+	const draw = () => {
+		if (!live) return;
+		const box = lensRect(canvas, lens());
+		if (box) ctx.drawImage(canvas, box.x, box.y, box.side, box.side, 0, 0, edge, edge);
+		else ctx.drawImage(canvas, 0, 0, edge, edge);
+		requestAnimationFrame(draw);
+	};
+	draw();
+	await new Promise((resolve) => {
+		requestAnimationFrame(() => resolve());
+	});
+	try {
+		return await recordCanvas(out, seconds, mime);
+	} finally {
+		live = false;
 	}
-};
-function downloadBlob(blob, filename) {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
-	URL.revokeObjectURL(url);
 }
 var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings, bottomInset, rimPad, topInset, menuOpen, onInteract, onFreeze, onMiddleClick, onWheel, onLayout, onPinChange }, ref) {
 	const rootRef = (0, import_react.useRef)(null);
@@ -2941,6 +4121,18 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 		clear: () => engineRef.current?.clear(),
 		burst: () => engineRef.current?.burst(),
 		exportPng: () => engineRef.current?.exportPng() ?? Promise.resolve(),
+		exportGif: () => {
+			const engine = engineRef.current;
+			const canvas = engine?.canvas();
+			if (!engine || !canvas) return Promise.reject(/* @__PURE__ */ new Error("Lens isn’t ready"));
+			return captureGif(canvas, () => engine.lensPixels());
+		},
+		exportMp4: (mime) => {
+			const engine = engineRef.current;
+			const canvas = engine?.canvas();
+			if (!engine || !canvas) return Promise.reject(/* @__PURE__ */ new Error("Lens isn’t ready"));
+			return captureVideo(canvas, () => engine.lensPixels(), 3, mime);
+		},
 		copyPng: () => engineRef.current?.copyPng() ?? Promise.resolve(false),
 		setBottomInset: (px) => engineRef.current?.setBottomInset(px),
 		setRimPad: (px) => engineRef.current?.setRimPad(px),
@@ -2948,13 +4140,7 @@ var KaleidoStage = (0, import_react.forwardRef)(function KaleidoStage({ settings
 		startClip: (handlers, seconds) => {
 			const canvas = engineRef.current?.canvas();
 			if (!canvas || !canRecord()) return false;
-			return recorderRef.current.start(canvas, {
-				...handlers,
-				onStop: (blob) => {
-					if (blob && blob.size > 0) downloadBlob(blob, `kaleido-clip-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${blob.type.includes("mp4") ? "mp4" : "webm"}`);
-					handlers.onStop?.(blob);
-				}
-			}, seconds);
+			return recorderRef.current.start(canvas, handlers, seconds);
 		},
 		stopClip: () => recorderRef.current.stop(),
 		recording: () => recorderRef.current.active,
@@ -3110,6 +4296,9 @@ function KaleidoApp() {
 	const [clipElapsed, setClipElapsed] = (0, import_react.useState)(0);
 	const [clipMax, setClipMax] = (0, import_react.useState)(15);
 	const [recordEnabled, setRecordEnabled] = (0, import_react.useState)(true);
+	const [heldClip, setHeldClip] = (0, import_react.useState)(null);
+	const [exportKind, setExportKind] = (0, import_react.useState)(null);
+	const [exportLabel, setExportLabel] = (0, import_react.useState)(null);
 	const [lens, setLens] = (0, import_react.useState)({
 		cx: 0,
 		cy: 0,
@@ -3123,6 +4312,12 @@ function KaleidoApp() {
 	const stageRef = (0, import_react.useRef)(null);
 	const noticeTimer = (0, import_react.useRef)(0);
 	const burstOnce = (0, import_react.useRef)(false);
+	const saveHandleRef = (0, import_react.useRef)(null);
+	const armingRef = (0, import_react.useRef)(false);
+	const savingRef = (0, import_react.useRef)(false);
+	const exportingRef = (0, import_react.useRef)(false);
+	const heldRef = (0, import_react.useRef)(heldClip);
+	heldRef.current = heldClip;
 	const flower = useChromeMode();
 	(0, import_react.useEffect)(() => {
 		setSettings(loadSettings());
@@ -3130,8 +4325,10 @@ function KaleidoApp() {
 		setReady(true);
 		setRecordEnabled(canRecord());
 	}, []);
-	const bottomInset = hiddenChrome ? 0 : Math.max(chromeH, tuneOpen ? 280 : dialOpen && !flower ? 228 : 76);
-	const rimPad = !hiddenChrome && dialOpen && !tuneOpen && flower ? 64 : 0;
+	const bottomInset = hiddenChrome ? 0 : Math.max(chromeH, tuneOpen ? 240 : dialOpen && !flower ? 228 : 76);
+	const flowerOpen = flower && dialOpen && !tuneOpen;
+	const rimPad = !hiddenChrome && flowerOpen ? 64 : 0;
+	const topInset = hiddenChrome ? 48 : flowerOpen ? 112 : 0;
 	(0, import_react.useEffect)(() => {
 		if (!ready) return;
 		saveSettings(settings);
@@ -3223,7 +4420,71 @@ function KaleidoApp() {
 			window.setTimeout(() => setCopied(false), 1600);
 		} else await onExport();
 	}, [onExport]);
-	const onRecord = (0, import_react.useCallback)(() => {
+	const onExportLoop = (0, import_react.useCallback)(async (kind) => {
+		if (exportingRef.current) return;
+		if (stageRef.current?.recording()) {
+			flash("Finish the clip first");
+			return;
+		}
+		const video = kind === "mp4" ? videoExportMime() : null;
+		const ext = kind === "gif" ? "gif" : video?.ext ?? "webm";
+		const filename = stampedName("kaleido", ext);
+		exportingRef.current = true;
+		let destination = "later";
+		try {
+			destination = await chooseSaveFile(filename, ext);
+		} catch {
+			destination = "later";
+		}
+		if (destination === "cancel" || stageRef.current?.recording()) {
+			exportingRef.current = false;
+			return;
+		}
+		setExportKind(kind);
+		setExportLabel(kind === "gif" ? "Making a GIF…" : ext === "mp4" ? "Making an MP4…" : "Making a video…");
+		try {
+			const blob = kind === "gif" ? await stageRef.current?.exportGif() : await stageRef.current?.exportMp4(video?.mime ?? "video/webm");
+			if (!blob || blob.size === 0) throw new Error("empty");
+			const name = blob.type.includes("mp4") ? filename.replace(/\.\w+$/, ".mp4") : blob.type.includes("gif") ? filename.replace(/\.\w+$/, ".gif") : filename.replace(/\.\w+$/, ".webm");
+			setHeldClip({
+				blob,
+				name
+			});
+			if (destination === "later") {
+				setClipState("ready");
+				return;
+			}
+			try {
+				await writeClipFile(destination, blob);
+				setClipState("idle");
+				flash("Saved");
+			} catch {
+				setClipState("ready");
+			}
+		} catch {
+			flash(kind === "gif" ? "Couldn’t make a GIF" : "Couldn’t make a video");
+			setClipState(heldRef.current ? "ready" : "idle");
+		} finally {
+			exportingRef.current = false;
+			setExportKind(null);
+			setExportLabel(null);
+		}
+	}, [flash]);
+	const onDownloadClip = (0, import_react.useCallback)(async () => {
+		if (!heldClip || savingRef.current) return;
+		savingRef.current = true;
+		try {
+			const how = await saveClip(heldClip.blob, heldClip.name);
+			setClipState((state) => state === "ready" ? "idle" : state);
+			flash(how === "shared" ? "Shared" : how === "saved" ? "Saved" : "Downloading");
+		} catch (err) {
+			if (!(err instanceof DOMException && err.name === "AbortError")) setClipState((state) => state === "recording" ? state : "ready");
+		} finally {
+			savingRef.current = false;
+		}
+	}, [flash, heldClip]);
+	const onRecord = (0, import_react.useCallback)(async () => {
+		if (exportingRef.current) return;
 		if (stageRef.current?.recording()) {
 			stageRef.current.stopClip();
 			return;
@@ -3233,6 +4494,16 @@ function KaleidoApp() {
 			window.setTimeout(() => setClipState("idle"), 1800);
 			return;
 		}
+		if (armingRef.current) return;
+		armingRef.current = true;
+		let destination = "later";
+		try {
+			destination = await chooseClipFile();
+		} finally {
+			armingRef.current = false;
+		}
+		if (destination === "cancel" || stageRef.current?.recording()) return;
+		saveHandleRef.current = destination === "later" ? null : destination;
 		setSettings((prev) => prev.frozen ? {
 			...prev,
 			frozen: false
@@ -3241,16 +4512,38 @@ function KaleidoApp() {
 		if (stageRef.current?.startClip({
 			onTick: (elapsed) => setClipElapsed(elapsed),
 			onStop: (blob) => {
-				setClipState(blob && blob.size > 0 ? "saved" : "idle");
 				setClipElapsed(0);
-				window.setTimeout(() => setClipState("idle"), 1600);
+				const handle = saveHandleRef.current;
+				saveHandleRef.current = null;
+				if (!blob || blob.size === 0) {
+					setClipState("idle");
+					flash("Clip didn’t capture");
+					return;
+				}
+				const name = clipFilename(blob.type);
+				setHeldClip({
+					blob,
+					name
+				});
+				if (!handle) {
+					setClipState("ready");
+					return;
+				}
+				setClipState("idle");
+				flash("Saving…");
+				writeClipFile(handle, blob).then(() => flash("Saved"), () => setClipState("ready"));
 			}
 		}, clipMax)) setClipState("recording");
 		else {
+			saveHandleRef.current = null;
 			setClipState("unsupported");
 			window.setTimeout(() => setClipState("idle"), 1800);
 		}
-	}, [recordEnabled, clipMax]);
+	}, [
+		clipMax,
+		flash,
+		recordEnabled
+	]);
 	const cyclePath = (0, import_react.useCallback)(() => {
 		setSettings((prev) => ({
 			...prev,
@@ -3301,7 +4594,8 @@ function KaleidoApp() {
 				}));
 				break;
 			case "record":
-				onRecord();
+				if (clipState === "ready") onDownloadClip();
+				else onRecord();
 				closeMenus();
 				break;
 			case "random":
@@ -3329,9 +4623,11 @@ function KaleidoApp() {
 		}
 	}, [
 		closeMenus,
+		clipState,
 		cyclePath,
 		onCycleColor,
 		onCycleLight,
+		onDownloadClip,
 		onRandomize,
 		onRecord,
 		onTogglePark,
@@ -3368,7 +4664,8 @@ function KaleidoApp() {
 			}
 			if (e.code === "KeyV") {
 				e.preventDefault();
-				onRecord();
+				if (clipState === "ready") onDownloadClip();
+				else onRecord();
 				return;
 			}
 			if (e.key === "r" || e.key === "R") {
@@ -3513,6 +4810,7 @@ function KaleidoApp() {
 	}, [
 		activateFocus,
 		closeMenus,
+		clipState,
 		cyclePath,
 		dialOpen,
 		focusId,
@@ -3520,6 +4818,7 @@ function KaleidoApp() {
 		hiddenChrome,
 		onClear,
 		onCyclePersist,
+		onDownloadClip,
 		onExport,
 		onRandomize,
 		onRecord,
@@ -3530,7 +4829,15 @@ function KaleidoApp() {
 		tuneOpen
 	]);
 	const pathLabel = settings.pathMode === "twin" ? "Twin brush" : settings.pathMode === "orbit" ? "Orbit" : settings.pathMode === "echo" ? "Echo" : settings.pathMode === "rosette" ? "Rosette" : settings.pathMode === "field" ? "Field" : null;
-	const status = notice ?? (clipState === "recording" ? `Recording ${Math.max(0, clipMax - clipElapsed).toFixed(0)}s` : clipState === "unsupported" ? "Recording isn’t available here" : copied ? "Copied" : settings.frozen ? "Frozen" : pinned ? "Pin parked" : macroSlot ? macros[macroSlot] ? `Slot ${macroSlot}` : `Save ${macroSlot}` : pathLabel);
+	const status = exportLabel ?? notice ?? (clipState === "recording" ? `Recording ${Math.max(0, clipMax - clipElapsed).toFixed(0)}s` : clipState === "ready" ? "Clip ready" : clipState === "unsupported" ? "Recording isn’t available here" : copied ? "Copied" : settings.frozen ? "Frozen" : pinned ? "Pin parked" : macroSlot ? macros[macroSlot] ? `Slot ${macroSlot}` : `Save ${macroSlot}` : pathLabel);
+	const showHeader = !hiddenChrome && !tuneOpen;
+	const downloadButton = clipState === "ready" && !exportKind && heldClip ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+		type: "button",
+		"data-testid": "btn-download-clip",
+		onClick: () => void onDownloadClip(),
+		className: "pointer-events-auto rounded-full bg-fg px-3 py-1.5 text-xs font-medium text-bg",
+		children: heldClip.name.endsWith(".gif") ? "Download GIF" : heldClip.name.endsWith(".mp4") ? "Download MP4" : heldClip.name.includes("-clip-") ? "Download clip" : "Download video"
+	}) : null;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
 		className: "relative h-screen h-dvh w-full select-none overflow-hidden bg-bg text-fg",
 		children: [
@@ -3539,7 +4846,7 @@ function KaleidoApp() {
 				settings,
 				bottomInset,
 				rimPad,
-				topInset: hiddenChrome ? 48 : 0,
+				topInset,
 				menuOpen: dialOpen || tuneOpen,
 				onInteract: () => {
 					setHint(false);
@@ -3562,7 +4869,7 @@ function KaleidoApp() {
 				onLayout: setLens,
 				onPinChange: setPinned
 			}),
-			!hiddenChrome && !tuneOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
+			showHeader ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 				className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-4 p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
 					className: "font-display text-3xl leading-tight tracking-[-0.03em] text-fg sm:text-4xl",
@@ -3576,19 +4883,23 @@ function KaleidoApp() {
 						className: "hidden sm:inline",
 						children: "Paint · 2–9 folds · 1 and 0 macros · Space opens the dial"
 					})]
-				})] }), status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				})] }), downloadButton ?? (status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 					className: "rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]",
 					children: status
-				}) : null]
-			}) : status && !hiddenChrome ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-				className: "pointer-events-none absolute top-3 right-3 z-10 rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]",
-				children: status
+				}) : null)]
+			}) : downloadButton || status && !hiddenChrome ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "pointer-events-none absolute top-3 right-3 z-20",
+				children: downloadButton ?? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "rounded-md bg-surface px-3 py-1.5 text-xs font-medium tracking-wide text-fg shadow-[var(--shadow-border)]",
+					children: status
+				})
 			}) : null,
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(KaleidoControls, {
 				settings,
 				exported,
 				copied,
 				clipState,
+				clipHeld: heldClip !== null,
 				clipElapsed,
 				clipMax,
 				tuneOpen,
@@ -3607,8 +4918,12 @@ function KaleidoApp() {
 				onRandomize,
 				onClear,
 				onExport: () => void onExport(),
+				onExportGif: () => void onExportLoop("gif"),
+				onExportMp4: () => void onExportLoop("mp4"),
+				exportKind,
 				onCopy: () => void onCopy(),
 				onRecord,
+				onDownloadClip: () => void onDownloadClip(),
 				onRecordSeconds: setClipMax,
 				onToggleTune: () => {
 					setHiddenChrome(false);
